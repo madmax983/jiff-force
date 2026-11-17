@@ -871,4 +871,70 @@ private class JiffDateTest {
             );
         }
     }
+
+    // ---- zoned datetimes --------------------------------------------------
+
+    @IsTest
+    static void becomesAZonedDatetimeAtMidnight() {
+        Assert.areEqual(
+            '2024-06-19T00:00:00-04:00[America/New_York]',
+            ymd(2024, 6, 19).inTz('America/New_York').toString()
+        );
+        Assert.areEqual(
+            '2024-03-31T00:00:00+00:00[Europe/London]',
+            ymd(2024, 3, 31).inTz('Europe/London').toString()
+        );
+        Assert.areEqual(
+            '2024-03-31T00:00:00+05:30[Asia/Kolkata]',
+            ymd(2024, 3, 31).inTz('Asia/Kolkata').toString()
+        );
+        // A fixed offset zone has no name, so its offset is printed in the annotation.
+        Assert.areEqual(
+            '2024-06-20T00:00:00-04:00[-04:00]',
+            ymd(2024, 6, 20).toZonedDateTime(JiffOffset.fromHours(-4).toTimeZone()).toString()
+        );
+    }
+
+    @IsTest
+    static void aZonedDateIsNotAtMidnightWhenTheZoneSkipsIt() {
+        // Sao Paulo sprang forward at midnight.
+        Assert.areEqual(
+            '2015-10-18T01:00:00-02:00[America/Sao_Paulo]',
+            ymd(2015, 10, 18).inTz('America/Sao_Paulo').toString()
+        );
+        Assert.areEqual(
+            '2015-10-18T01:00:00-02:00[America/Sao_Paulo]',
+            ymd(2015, 10, 18).toZonedDateTime(JiffTimeZone.get('America/Sao_Paulo')).toString()
+        );
+        // Apia skipped the whole day.
+        Assert.areEqual(
+            '2011-12-31T00:00:00+14:00[Pacific/Apia]',
+            ymd(2011, 12, 30).inTz('Pacific/Apia').toString()
+        );
+    }
+
+    @IsTest
+    static void aZonedDateCanFail() {
+        try {
+            ymd(2024, 6, 19).inTz('Not/AZone');
+            Assert.fail('expected an unknown time zone to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'failed to find time zone `Not/AZone` in time zone database',
+                e.getMessage()
+            );
+        }
+        String outOfRange =
+            'converting datetime with time zone offset `+00` to timestamp overflowed: ' +
+            'parameter \'Unix timestamp seconds\' is not in the required range of ' +
+            '-377705023201..=253402207200';
+        for (JiffDate edge : new List<JiffDate>{ JiffDate.MAX, JiffDate.MIN }) {
+            try {
+                edge.inTz('UTC');
+                Assert.fail('expected ' + edge + ' at midnight to have no instant in UTC');
+            } catch (JiffException e) {
+                Assert.areEqual(outOfRange, e.getMessage());
+            }
+        }
+    }
 }

@@ -11,8 +11,9 @@
  *   civil time. This is Jiff's default.
  *
  * The strategy is applied when a zoned datetime is built from a civil datetime, an offset and a
- * time zone (Jiff's `OffsetConflict::resolve`), which is part of `JiffZonedDateTime`. Apex enums
- * cannot declare methods, so this type only names the strategies.
+ * time zone. Apex enums cannot declare methods, so this type only names the strategies, and
+ * Jiff's `OffsetConflict::resolve` is the static method `JiffOffsetConflicts.resolve`.
+ * `JiffZonedDateTime.with()` uses it too.
  *
  * Mirrors `jiff::tz::OffsetConflict`.
  */

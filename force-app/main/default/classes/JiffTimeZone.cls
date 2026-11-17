@@ -334,6 +334,34 @@ public class JiffTimeZone {
         return toAmbiguousTimestamp(dt).compatible();
     }
 
+    /**
+     * Finds the zoned datetime or datetimes that have the given civil datetime in this zone,
+     * without choosing between them. The result says whether the civil datetime is
+     * unambiguous, falls in a gap, or falls in a fold, and offers each way of resolving it.
+     *
+     * This is `toAmbiguousTimestamp` with this time zone carried along, so that resolving it
+     * gives a `JiffZonedDateTime` rather than a bare instant. (Jiff's
+     * `into_ambiguous_zoned_datetime` is this same method.)
+     */
+    public JiffAmbiguousZonedDateTime toAmbiguousZonedDateTime(JiffDateTime dt) {
+        return JiffAmbiguousZonedDateTime.newInstance(toAmbiguousTimestamp(dt), this);
+    }
+
+    /**
+     * The zoned datetime with the given civil datetime in this zone, resolving a gap or a
+     * fold with the `COMPATIBLE` strategy: a time skipped by the clocks moves forward by the
+     * length of the gap, and a repeated time means its first occurrence.
+     *
+     *     JiffTimeZone tz = JiffTimeZone.get('America/New_York');
+     *     tz.toZonedDateTime(JiffDateTime.newInstance(2024, 3, 10, 2, 30, 0, 0));
+     *     // 2024-03-10T03:30:00-04:00[America/New_York]
+     *
+     * Throws only if the instant is outside the range of `JiffTimestamp`.
+     */
+    public JiffZonedDateTime toZonedDateTime(JiffDateTime dt) {
+        return toAmbiguousZonedDateTime(dt).compatible();
+    }
+
     // ---- transitions ----------------------------------------------------
 
     /**

@@ -446,6 +446,30 @@ public class JiffDate implements Comparable {
     }
 
     /**
+     * This date at midnight on the clock in the given time zone, as a zoned datetime. If the
+     * zone skips or repeats midnight on this date, it is resolved with the `COMPATIBLE`
+     * strategy, so the result is not always at `00:00`:
+     *
+     *     JiffTimeZone saoPaulo = JiffTimeZone.get('America/Sao_Paulo');
+     *     JiffDate.newInstance(2015, 10, 18).toZonedDateTime(saoPaulo);
+     *     // 2015-10-18T01:00:00-02:00[America/Sao_Paulo]
+     *
+     * Throws if the instant is outside the range of `JiffTimestamp`.
+     */
+    public JiffZonedDateTime toZonedDateTime(JiffTimeZone tz) {
+        return toDateTime(JiffTime.midnight()).toZonedDateTime(tz);
+    }
+
+    /**
+     * This date at midnight on the clock in the time zone with the given IANA name. Shorthand
+     * for `toZonedDateTime(JiffTimeZone.get(name))`; throws if the platform does not know the
+     * name.
+     */
+    public JiffZonedDateTime inTz(String name) {
+        return toZonedDateTime(JiffTimeZone.get(name));
+    }
+
+    /**
      * Converts this date to a platform `Date` with the same year, month and day.
      *
      * The platform calendar is Gregorian from 15 October 1582 and Julian before that, so it
