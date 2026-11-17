@@ -832,4 +832,43 @@ private class JiffDateTest {
             Assert.areEqual('the system Date to convert must not be null', e.getMessage());
         }
     }
+
+    // ---- combining with a time ------------------------------------------
+
+    @IsTest
+    static void combinesWithATimeIntoADatetime() {
+        JiffDate day = ymd(2010, 3, 14);
+        JiffTime halfPastTwo = JiffTime.newInstance(2, 30, 0, 0);
+        Assert.areEqual(JiffDateTime.fromParts(day, halfPastTwo), day.toDateTime(halfPastTwo));
+        Assert.areEqual('2010-03-14T02:30:00', day.toDateTime(halfPastTwo).toString());
+        try {
+            JiffDateTime unexpected = day.toDateTime(null);
+            Assert.fail('expected a missing time to be rejected but got ' + unexpected);
+        } catch (JiffException e) {
+            Assert.areEqual('a datetime needs both a date and a time', e.getMessage());
+        }
+    }
+
+    @IsTest
+    static void buildsADatetimeAtTheGivenTimeOfDay() {
+        Assert.areEqual('2010-03-14T02:30:00', ymd(2010, 3, 14).at(2, 30, 0, 0).toString());
+        Assert.areEqual(
+            JiffDateTime.newInstance(2024, 2, 29, 15, 22, 45, 123456789),
+            ymd(2024, 2, 29).at(15, 22, 45, 123456789)
+        );
+        // It is the same datetime that `JiffTime.onDate` builds from the other side.
+        Assert.areEqual(
+            JiffTime.newInstance(2, 30, 0, 0).onDate(2010, 3, 14),
+            ymd(2010, 3, 14).at(2, 30, 0, 0)
+        );
+        try {
+            JiffDateTime unexpected = ymd(2010, 3, 14).at(24, 0, 0, 0);
+            Assert.fail('expected an invalid hour to be rejected but got ' + unexpected);
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'parameter \'hour\' is not in the required range of 0..=23',
+                e.getMessage()
+            );
+        }
+    }
 }

@@ -420,6 +420,32 @@ public class JiffDate implements Comparable {
     }
 
     /**
+     * The datetime on this date at the time of day `timePart`. The same as
+     * `JiffDateTime.fromParts(this, timePart)`.
+     *
+     *     JiffDate day = JiffDate.newInstance(2010, 3, 14);
+     *     day.toDateTime(JiffTime.newInstance(2, 30, 0, 0));   // 2010-03-14T02:30:00
+     */
+    public JiffDateTime toDateTime(JiffTime timePart) {
+        return JiffDateTime.fromParts(this, timePart);
+    }
+
+    /**
+     * The datetime on this date at the time of day given by its fields. Throws if a field is
+     * out of range; see `JiffTime.newInstance`.
+     *
+     *     JiffDate.newInstance(2010, 3, 14).at(2, 30, 0, 0);   // 2010-03-14T02:30:00
+     *
+     * `JiffTime.onDate` builds the same datetime starting from the time.
+     */
+    public JiffDateTime at(Integer hour, Integer minute, Integer second, Integer subsecNanosecond) {
+        return JiffDateTime.fromParts(
+            this,
+            JiffTime.newInstance(hour, minute, second, subsecNanosecond)
+        );
+    }
+
+    /**
      * Converts this date to a platform `Date` with the same year, month and day.
      *
      * The platform calendar is Gregorian from 15 October 1582 and Julian before that, so it

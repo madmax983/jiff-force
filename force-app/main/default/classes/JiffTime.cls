@@ -179,6 +179,30 @@ public class JiffTime implements Comparable {
     }
 
     /**
+     * The datetime at this time of day on the date `datePart`. The same as
+     * `JiffDateTime.fromParts(datePart, this)`.
+     *
+     *     JiffTime t = JiffTime.newInstance(2, 30, 0, 0);
+     *     t.toDateTime(JiffDate.newInstance(2010, 3, 14));   // 2010-03-14T02:30:00
+     */
+    public JiffDateTime toDateTime(JiffDate datePart) {
+        return JiffDateTime.fromParts(datePart, this);
+    }
+
+    /**
+     * The datetime at this time of day on the date given by its fields. Throws if the fields
+     * do not form a valid date; see `JiffDate.newInstance`.
+     *
+     *     JiffTime.newInstance(2, 30, 0, 0).onDate(2010, 3, 14);   // 2010-03-14T02:30:00
+     *
+     * This is Jiff's `Time::on` (`on` is a reserved word in Apex). `JiffDate.at` builds the
+     * same datetime starting from the date.
+     */
+    public JiffDateTime onDate(Integer year, Integer month, Integer day) {
+        return JiffDateTime.fromParts(JiffDate.newInstance(year, month, day), this);
+    }
+
+    /**
      * Converts this time to a platform `Time`. A platform `Time` has millisecond precision, so
      * the microsecond and nanosecond components are dropped. The value is truncated, never
      * rounded: `23:59:59.999999999` becomes `23:59:59.999`.
