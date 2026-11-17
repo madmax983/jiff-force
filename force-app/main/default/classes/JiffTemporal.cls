@@ -8,31 +8,52 @@
  * Mirrors `jiff::fmt::temporal`.
  */
 public class JiffTemporal {
+    private static final JiffTemporalPrinter DEFAULT_PRINTER = new JiffTemporalPrinter();
+
+    // ---- datetimes: printing ----------------------------------------------
+    //
+    // These print with the default options. For lowercase letters, another separator or a
+    // fixed precision of fractional seconds, use a `JiffTemporalPrinter`.
+
     /** Formats a date as `YYYY-MM-DD`. Years before zero are written as `-00YYYY`. */
     public static String printDate(JiffDate value) {
-        Integer year = value.year();
-        return (year < 0 ? '-00' + JiffMath.pad(-year, 4) : JiffMath.pad(year, 4)) +
-            '-' +
-            JiffMath.pad(value.month(), 2) +
-            '-' +
-            JiffMath.pad(value.day(), 2);
+        return DEFAULT_PRINTER.dateToString(value);
     }
 
     /** Formats a time as `HH:MM:SS`, followed by a fraction only when it is non-zero. */
     public static String printTime(JiffTime value) {
-        String out =
-            JiffMath.pad(value.hour(), 2) +
-            ':' +
-            JiffMath.pad(value.minute(), 2) +
-            ':' +
-            JiffMath.pad(value.second(), 2);
-        Integer nanos = value.subsecNanosecond();
-        return nanos == 0 ? out : out + '.' + fraction(nanos);
+        return DEFAULT_PRINTER.timeToString(value);
     }
 
     /** Formats a datetime as a date and a time separated by `T`. */
     public static String printDateTime(JiffDateTime value) {
-        return printDate(value.toDate()) + 'T' + printTime(value.toTime());
+        return DEFAULT_PRINTER.dateTimeToString(value);
+    }
+
+    /**
+     * Formats an ISO 8601 week date as `YYYY-Www-D`, for example `2024-W10-6`. The weekday is
+     * written as a number from `1` (Monday) to `7` (Sunday), and years before zero as
+     * `-00YYYY`.
+     */
+    public static String printIsoWeekDate(JiffIsoWeekDate value) {
+        return DEFAULT_PRINTER.isoWeekDateToString(value);
+    }
+
+    /**
+     * Formats a time zone in the form `parseTimeZone` reads: its IANA name, `Etc/Unknown`, or
+     * the offset of a fixed zone as `+HH:MM` (`+HH:MM:SS` when it has seconds).
+     */
+    public static String printTimeZone(JiffTimeZone zone) {
+        return DEFAULT_PRINTER.timeZoneToString(zone);
+    }
+
+    /**
+     * Formats datetime pieces as a Temporal ISO 8601 string, for example
+     * `2025-01-03T07:55:00+02:00[Africa/Cairo]`. See `JiffTemporalPrinter.piecesToString` for
+     * how each piece is written.
+     */
+    public static String printPieces(JiffPieces pieces) {
+        return DEFAULT_PRINTER.piecesToString(pieces);
     }
 
     /**
@@ -67,7 +88,7 @@ public class JiffTemporal {
 
     /** Formats an instant as an RFC 3339 timestamp in UTC, for example `2024-06-19T19:22:45Z`. */
     public static String printTimestamp(JiffTimestamp value) {
-        return printDateTime(JiffOffset.UTC.toDateTime(value)) + 'Z';
+        return DEFAULT_PRINTER.timestampToString(value);
     }
 
     /**
@@ -75,8 +96,140 @@ public class JiffTemporal {
      * `2024-06-19T15:22:45-04:00`. The civil part is what a clock at that offset shows.
      */
     public static String printTimestampWithOffset(JiffTimestamp value, JiffOffset offset) {
-        return printDateTime(offset.toDateTime(value)) + printOffset(offset);
+        return DEFAULT_PRINTER.timestampWithOffsetToString(value, offset);
     }
+
+    // ---- datetimes: parsing -----------------------------------------------
+    //
+    // All of these read the same grammar, which `JiffTemporalParser` describes, and differ in
+    // which parts of a string they require and which they ignore. They throw `JiffException`
+    // with Jiff's wording when the text does not parse.
+
+    /**
+     * Parses the components of a datetime string without deciding what they should become: a
+     * date, and optionally a time, a UTC offset and a time zone annotation. The other parsing
+     * functions here are this followed by one of the conversions on the result.
+     *
+     * Mirrors `jiff::fmt::temporal::parser::DateTimeParser::parse_temporal_datetime`.
+     */
+    public static JiffTemporalParsed parseParts(String text) {
+        return JiffTemporalParser.parseDateTime(text);
+    }
+
+    /**
+     * Parses a civil date such as `2024-06-19`.
+     *
+     * - The basic format without separators is accepted too (`20240619`), but the two styles
+     *   may not be mixed.
+     * - A year outside `0000..9999` is written with a sign and six digits: `-000044-03-15`.
+     * - A full datetime is accepted and everything but its date is ignored, including a
+     *   numeric offset and a time zone annotation: `2024-06-19T15:22:45-04:00[America/New_York]`
+     *   is `2024-06-19`.
+     * - A `Z` offset is rejected. `Z` says the time is in UTC, so the date that was written
+     *   may not be the date where the event happened; parse a `JiffTimestamp` and convert it
+     *   with a time zone instead.
+     *
+     * Mirrors `jiff::fmt::temporal::DateTimeParser::parse_date`.
+     */
+    public static JiffDate parseDate(String text) {
+        return JiffTemporalParser.parseDateTime(text).toDate();
+    }
+
+    /**
+     * Parses a civil datetime such as `2024-06-19T15:22:45` or `2024-06-19 15:22:45.123`.
+     *
+     * - The date and time are separated by `T`, `t` or a single space.
+     * - The time may stop after the hour or the minute (`2024-06-19T15`), and may be written
+     *   without colons (`20240619T152245`).
+     * - The seconds may have up to nine fractional digits, after `.` or `,`.
+     * - A second of `60` (a leap second) is accepted and read as `59`.
+     * - A date alone gives midnight.
+     * - A numeric offset and a time zone annotation are ignored. A `Z` offset is rejected, for
+     *   the reason given under `parseDate`.
+     *
+     * Mirrors `jiff::fmt::temporal::DateTimeParser::parse_datetime`.
+     */
+    public static JiffDateTime parseDateTime(String text) {
+        return JiffTemporalParser.parseDateTime(text).toDateTime();
+    }
+
+    /**
+     * Parses a civil time such as `15:22:45`, `15:22`, `15` or `15:22:45.123456789`.
+     *
+     * - A time may start with the designator `T` or `t`.
+     * - A full datetime is accepted and its date is ignored, but a date without a time is
+     *   rejected.
+     * - A time without colons (`1522`) is accepted only when it could not also be a date. The
+     *   string `1214` could mean 12:14 or December 14th and `202012` could mean 20:20:12 or
+     *   December 2020, so both are rejected; `T1214` and `12:14` are not ambiguous.
+     * - A numeric offset and annotations are ignored, and a `Z` offset is rejected.
+     *
+     * Mirrors `jiff::fmt::temporal::DateTimeParser::parse_time`.
+     */
+    public static JiffTime parseTime(String text) {
+        return JiffTemporalParser.parseTime(text);
+    }
+
+    /**
+     * Parses an instant from an RFC 3339 timestamp such as `2024-06-19T19:22:45Z` or
+     * `2024-06-19T15:22:45-04:00`.
+     *
+     * - A time and an offset are both required: without them the string does not identify an
+     *   instant.
+     * - The offset is `Z` (or `z`) or numeric: `-04`, `-04:00`, `-0400`, `+05:30:15`. An
+     *   offset may have seconds and even a fraction of a second, which is rounded to the
+     *   nearest second. `-00:00` is the same as `Z`.
+     * - A time zone annotation may follow (`[America/New_York]`), and is ignored: the offset
+     *   alone decides the instant, even when it is not an offset that zone ever uses. Parse a
+     *   zoned datetime when the zone's rules should be applied.
+     * - Other annotations, such as `[u-ca=gregory]`, are checked for syntax and ignored,
+     *   unless they are marked critical (`[!u-ca=gregory]`), which is an error.
+     *
+     * Mirrors `jiff::fmt::temporal::DateTimeParser::parse_timestamp`.
+     */
+    public static JiffTimestamp parseTimestamp(String text) {
+        return JiffTemporalParser.parseDateTime(text).toTimestamp();
+    }
+
+    /**
+     * Parses an ISO 8601 week date such as `2024-W10-6`: a week year, `W` and a two digit
+     * week number, and the day of the week as a digit from `1` (Monday) to `7` (Sunday).
+     *
+     * The `W` may be lowercase and the hyphens may be left out (`2024W106`). The year follows
+     * the same rules as in `parseDate`.
+     *
+     * Mirrors `jiff::fmt::temporal::DateTimeParser::parse_iso_week_date`.
+     */
+    public static JiffIsoWeekDate parseIsoWeekDate(String text) {
+        return JiffTemporalParser.parseIsoWeekDate(text);
+    }
+
+    /**
+     * Parses a time zone: an IANA name such as `America/New_York` or `UTC`, or a UTC offset
+     * such as `-05:00`, `+0530` or `+05:30:15`, which gives a fixed offset zone. This reads
+     * what `printTimeZone` writes.
+     *
+     * Jiff also accepts POSIX TZ strings here (`EST5EDT,M3.2.0,M11.1.0`). This port has no
+     * POSIX time zones, so such a string is looked up as a name and fails. Names are matched
+     * as `JiffTimeZone.get` matches them, which is case sensitive.
+     *
+     * Mirrors `jiff::fmt::temporal::DateTimeParser::parse_time_zone`.
+     */
+    public static JiffTimeZone parseTimeZone(String text) {
+        return JiffTemporalParser.parseTimeZone(text);
+    }
+
+    /**
+     * Parses a datetime string into its pieces, with nothing required but the date and
+     * nothing ignored. See `JiffPieces`.
+     *
+     * Mirrors `jiff::fmt::temporal::DateTimeParser::parse_pieces`.
+     */
+    public static JiffPieces parsePieces(String text) {
+        return JiffTemporalParser.parseDateTime(text).toPieces();
+    }
+
+    // ---- durations: printing ----------------------------------------------
 
     /**
      * Formats a duration as an ISO 8601 duration with hours as the largest unit, for example

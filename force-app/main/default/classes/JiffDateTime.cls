@@ -73,6 +73,27 @@ public class JiffDateTime implements Comparable {
         );
     }
 
+    /**
+     * Parses a datetime in ISO 8601 format, such as `2024-06-19T15:22:45`. This is the inverse
+     * of `toString()`.
+     *
+     *     JiffDateTime.parse('2024-06-19T15:22:45');      // 2024-06-19T15:22:45
+     *     JiffDateTime.parse('2024-06-19 15:22:45.5');    // a space may separate date and time
+     *     JiffDateTime.parse('2024-06-19');               // midnight
+     *     JiffDateTime.parse('2024-06-19T15:22:45-04:00[America/New_York]');
+     *                                                     // offset and time zone are ignored
+     *
+     * A string with a `Z` offset names an instant in UTC, not a civil datetime somewhere, and
+     * is rejected; parse it with `JiffTimestamp.parse` and convert that. See
+     * `JiffTemporal.parseDateTime` for everything that is accepted. Throws `JiffException`
+     * when the text is not a valid datetime.
+     *
+     * Mirrors `impl FromStr for jiff::civil::DateTime`.
+     */
+    public static JiffDateTime parse(String text) {
+        return JiffTemporal.parseDateTime(text);
+    }
+
     // ---- accessors ------------------------------------------------------
 
     /** The date part of this datetime. */

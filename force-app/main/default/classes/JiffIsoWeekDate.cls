@@ -118,6 +118,21 @@ public class JiffIsoWeekDate implements Comparable {
             (lastDay == JiffWeekday.FRIDAY && JiffDate.isLeapYear(year));
     }
 
+    /**
+     * Parses an ISO 8601 week date, such as `2024-W10-6`. This is the inverse of
+     * `toString()`.
+     *
+     *     JiffIsoWeekDate.parse('2024-W10-6');  // Saturday of week 10 of 2024
+     *     JiffIsoWeekDate.parse('2024W106');    // the same, in the basic format
+     *
+     * The `W` may be lowercase. Throws `JiffException` when the text is not a valid week date.
+     *
+     * Mirrors `impl FromStr for jiff::civil::ISOWeekDate`.
+     */
+    public static JiffIsoWeekDate parse(String text) {
+        return JiffTemporal.parseIsoWeekDate(text);
+    }
+
     // ---- accessors ------------------------------------------------------
 
     /**
@@ -269,10 +284,6 @@ public class JiffIsoWeekDate implements Comparable {
      * a number from `1` (Monday) to `7` (Sunday), and years before zero as `-00YYYY`.
      */
     public override String toString() {
-        return (yearValue < 0 ? '-00' + JiffMath.pad(-yearValue, 4) : JiffMath.pad(yearValue, 4)) +
-            '-W' +
-            JiffMath.pad(weekValue, 2) +
-            '-' +
-            JiffWeekdays.toMondayOneOffset(weekdayValue);
+        return JiffTemporal.printIsoWeekDate(this);
     }
 }

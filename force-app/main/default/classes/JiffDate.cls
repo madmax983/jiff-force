@@ -201,6 +201,25 @@ public class JiffDate implements Comparable {
     }
 
     /**
+     * Parses a date in ISO 8601 format, such as `2024-06-19`. This is the inverse of
+     * `toString()`.
+     *
+     *     JiffDate.parse('2024-06-19');           // 2024-06-19
+     *     JiffDate.parse('20240619');             // the same date, in the basic format
+     *     JiffDate.parse('-000044-03-15');        // a year before zero has a sign and six digits
+     *     JiffDate.parse('2024-06-19T15:22:45');  // the time of a datetime is ignored
+     *
+     * A string with a `Z` offset names an instant in UTC, not a date somewhere, and is
+     * rejected. See `JiffTemporal.parseDate` for everything that is accepted. Throws
+     * `JiffException` when the text is not a valid date.
+     *
+     * Mirrors `impl FromStr for jiff::civil::Date`.
+     */
+    public static JiffDate parse(String text) {
+        return JiffTemporal.parseDate(text);
+    }
+
+    /**
      * Starts building a new date from this one with some fields replaced:
      *
      *     JiffDate.newInstance(2024, 10, 31).with().month(11).day(30).build();   // 2024-11-30
