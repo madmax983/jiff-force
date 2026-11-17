@@ -47,3 +47,6 @@ oracle/target/
 
 # JaCoCo jars fetched on demand for coverage runs
 tools/apexjvm/lib/
+
+# Claude Code agent worktrees
+.claude/worktrees/

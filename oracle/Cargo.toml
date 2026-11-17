@@ -1,0 +1,17 @@
+[package]
+name = "jiff-force-oracle"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Generates golden test vectors for jiff-force from the real Jiff crate"
+license = "Apache-2.0"
+
+[dependencies]
+# Pinned exactly: the vectors are a record of what this specific release does.
+# The time zone database is always the bundled copy, never the host's.
+jiff = { version = "=1.0.0", default-features = false, features = ["std", "tzdb-bundle-always"] }
+anyhow = "1"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }

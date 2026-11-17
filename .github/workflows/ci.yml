@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: Format and metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      # prettier-plugin-apex parses with Salesforce's own Apex parser, so this
+      # is also the syntax check.
+      - run: npm run fmt:check
+      - run: npm run meta:check
+
+  harness:
+    name: Tests and coverage (JVM harness)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: node tools/apexjvm/fetch-jacoco.mjs
+      - run: npm run test:coverage
+
+  aer:
+    name: Tests (AER)
+    runs-on: ubuntu-latest
+    env:
+      AER_LICENSE_KEY: ${{ secrets.AER_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      # AER's free tier stops after 100 test methods. The suite is larger than
+      # that, so the full run needs a licence key; without one this job is a
+      # no-op rather than a failure.
+      - name: Check for an AER licence key
+        id: licence
+        run: |
+          if [ -n "${AER_LICENSE_KEY}" ]; then
+            echo "present=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::notice::AER_LICENSE_KEY is not configured; skipping the AER test run."
+          fi
+      - name: Run Apex tests with AER
+        if: steps.licence.outputs.present == 'true'
+        uses: octoberswimmer/aer-dist@v1.7.3
+        with:
+          source: force-app
+          version: v1.7.3
+          flags: --timezone America/Los_Angeles
+
+  org:
+    name: Validate against a Salesforce org
+    runs-on: ubuntu-latest
+    env:
+      SFDX_AUTH_URL: ${{ secrets.SFDX_AUTH_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      # The real platform is the final authority. This job runs only when a
+      # Dev Hub / org auth URL has been configured as a repository secret.
+      - name: Check for org credentials
+        id: creds
+        run: |
+          if [ -n "${SFDX_AUTH_URL}" ]; then
+            echo "present=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::notice::SFDX_AUTH_URL is not configured; skipping org validation."
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.creds.outputs.present == 'true'
+        with:
+          node-version: 22
+      - name: Install the Salesforce CLI
+        if: steps.creds.outputs.present == 'true'
+        run: npm install --global @salesforce/cli
+      - name: Authenticate
+        if: steps.creds.outputs.present == 'true'
+        run: |
+          printf '%s' "${SFDX_AUTH_URL}" > "${RUNNER_TEMP}/auth-url.txt"
+          sf org login sfdx-url --sfdx-url-file "${RUNNER_TEMP}/auth-url.txt" --alias ci --set-default
+          rm -f "${RUNNER_TEMP}/auth-url.txt"
+      - name: Validate deployment and run all tests
+        if: steps.creds.outputs.present == 'true'
+        run: sf project deploy validate --source-dir force-app --test-level RunLocalTests --wait 60
