@@ -476,4 +476,33 @@ public class JiffSpan {
     public override String toString() {
         return JiffTemporal.printSpan(this);
     }
+
+    /**
+     * Parses a span from either an ISO 8601 duration (`P1Y2M3DT4H5M6S`) or a friendly duration
+     * (`1 year, 2 months, 3 days, 4h 5m 6s`).
+     *
+     * Text that starts with `P` or `p`, optionally after a sign, is read as ISO 8601;
+     * anything else is read as the friendly format. Each unit is kept as written. Throws
+     * `JiffException` when the text is neither, or a unit is beyond what a span holds.
+     *
+     *     JiffSpan.parse('P2M35DT2H30M');                  // 2 months 35 days 2 hours 30 minutes
+     *     JiffSpan.parse('2 months, 35 days, 02:30:00');   // the same span
+     *     JiffSpan.parse('3d ago');                        // -P3D
+     *
+     * See `JiffTemporal.parseSpan` and `JiffFriendly` for the two formats.
+     */
+    public static JiffSpan parse(String text) {
+        return JiffFriendly.parseIsoOrFriendlySpan(text);
+    }
+
+    /**
+     * Formats this span in the friendly format, for example `1y 2mo 15h 30s` or `3d ago`.
+     *
+     * Unlike `toString()`, the result names every unit separately, so `parse` reads it back
+     * as exactly this span. Use `JiffFriendlyPrinter` for other styles, such as
+     * `1 year, 2 months`.
+     */
+    public String toFriendly() {
+        return JiffFriendly.printSpan(this);
+    }
 }

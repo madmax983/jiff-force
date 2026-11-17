@@ -420,4 +420,27 @@ public class JiffSignedDuration implements Comparable {
     public override String toString() {
         return JiffTemporal.printDuration(this);
     }
+
+    /**
+     * Parses a duration from either an ISO 8601 duration (`PT2H30M`) or a friendly duration
+     * (`2h 30m`, `2 hours, 30 minutes`, `02:30:00`, `2.5 hours`).
+     *
+     * Text that starts with `P` or `p`, optionally after a sign, is read as ISO 8601;
+     * anything else is read as the friendly format. Only hours and smaller units are
+     * accepted, because a day or a month has no fixed length; parse into a `JiffSpan` for
+     * those. Throws `JiffException` when the text is neither format or the total overflows.
+     *
+     * See `JiffTemporal.parseDuration` and `JiffFriendly` for the two formats.
+     */
+    public static JiffSignedDuration parse(String text) {
+        return JiffFriendly.parseIsoOrFriendlyDuration(text);
+    }
+
+    /**
+     * Formats this duration in the friendly format, for example `2h 30m` or `1s 500ms ago`.
+     * The largest unit used is hours. Use `JiffFriendlyPrinter` for other styles.
+     */
+    public String toFriendly() {
+        return JiffFriendly.printDuration(this);
+    }
 }
