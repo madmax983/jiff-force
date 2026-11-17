@@ -63,9 +63,30 @@ fn render(name: &str, columns: &str, rows: &[String]) -> String {
     out
 }
 
-/// Escapes a row for use inside a single quoted Apex string literal.
+/// Escapes a row for use inside a single quoted Apex string literal. Control
+/// characters and everything outside ASCII are written as escapes, so the
+/// generated classes are plain ASCII whatever the vectors contain.
 fn escape(row: &str) -> String {
-    row.replace('\\', "\\\\").replace('\'', "\\'")
+    let mut out = String::with_capacity(row.len());
+    for c in row.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\'' => out.push_str("\\'"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            ' '..='~' => out.push(c),
+            _ => {
+                // Apex, like Java, writes a character beyond the basic plane
+                // as its two UTF-16 code units.
+                let mut units = [0_u16; 2];
+                for unit in c.encode_utf16(&mut units) {
+                    let _ = write!(out, "\\u{unit:04X}");
+                }
+            }
+        }
+    }
+    out
 }
 
 /// The Jiff release the vectors were generated from.
@@ -80,6 +101,15 @@ mod tests {
     #[test]
     fn escapes_quotes_and_backslashes() {
         assert_eq!(escape(r"it's a \ test"), r"it\'s a \\ test");
+    }
+
+    #[test]
+    fn escapes_control_characters_and_everything_outside_ascii() {
+        assert_eq!(escape("a\tb\nc\rd"), r"a\tb\nc\rd");
+        assert_eq!(escape("1 \u{b5}s"), concat!("1 ", "\\", "u00B5s"));
+        assert_eq!(escape("\u{2212}5h"), concat!("\\", "u22125h"));
+        assert_eq!(escape("\u{1F600}"), concat!("\\", "uD83D", "\\", "uDE00"));
+        assert_eq!(escape("plain ~ text"), "plain ~ text");
     }
 
     #[test]
