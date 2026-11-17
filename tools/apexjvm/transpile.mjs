@@ -322,7 +322,7 @@ export function transpile(fileName, source, enums, typeNames = new Set()) {
         return found;
     }
 
-    /** Whether a method body contains `return null` (directly or as a ternary branch). */
+    /** Whether a method can return null: `return null`, or returning a nullable variable. */
     function returnsNull(method) {
         let found = false;
         (function walk(n) {
@@ -334,7 +334,17 @@ export function transpile(fileName, source, enums, typeNames = new Set()) {
                         value.constructor.name === "CondExpressionContext"
                             ? [value.children[2], value.children[4]]
                             : [value];
-                    if (parts.some((part) => part.getText().toLowerCase() === "null")) found = true;
+                    // Returning null, or returning a variable the class itself
+                    // treats as nullable, makes the result nullable.
+                    const nullish = (part) => {
+                        const text = part.getText();
+                        if (text.toLowerCase() === "null") return true;
+                        return (
+                            /^(this\.)?[A-Za-z_]\w*$/.test(text) &&
+                            nullTouched(tree, text.replace(/^this\./i, ""))
+                        );
+                    };
+                    if (parts.some(nullish)) found = true;
                 }
                 return;
             }

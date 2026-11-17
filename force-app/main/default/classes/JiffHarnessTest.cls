@@ -141,6 +141,10 @@ private class JiffHarnessTest {
         Integer orZero() {
             return optional == null ? 0 : optional;
         }
+
+        Integer orNull() {
+            return optional;
+        }
     }
 
     private static Integer lengthOrNull(String text) {
@@ -165,7 +169,9 @@ private class JiffHarnessTest {
         Holder holder = new Holder(7L);
         Assert.isTrue(holder.isUnset());
         Assert.areEqual(0, holder.orZero());
+        Assert.isNull(holder.orNull());
         holder.assign(4);
+        Assert.areEqual(4, holder.orNull());
         Assert.isFalse(holder.isUnset());
         Assert.areEqual(4, holder.orZero());
         Map<String, Long> lookup = new Map<String, Long>{ 'a' => 1L };

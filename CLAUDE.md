@@ -51,7 +51,7 @@ Apex and Java; do not work around them.
 
 1. **`Integer`, `Long`, `Boolean`, `Double` are non-null unless the code says otherwise.** They
    become Java primitives, except where the code in scope treats the value as possibly null: a
-   method that contains `return null`, or a parameter, local or field that is assigned `null` or
+   method that contains `return null` or returns a nullable variable, or a parameter, local or field that is assigned `null` or
    compared with `null`. Those stay boxed. So nullable values are written the natural Apex way
    (`Integer dayOfYearNoLeap()` with `return null`), and a caller that needs to test the result
    for null assigns it to a local and compares that local with `null`.
