@@ -246,7 +246,10 @@ public class JiffSpan {
             }
             Long max = LIMITS.get(i);
             String what = JiffMath.plural(UNITS.get(i));
-            if (absFactor > max || magnitude > max / absFactor) {
+            if (
+                JiffMath.greaterThan(absFactor, max) ||
+                JiffMath.greaterThan(magnitude, max / absFactor)
+            ) {
                 throw JiffMath.rangeError(what, -max, max);
             }
             next.add(magnitude * absFactor);
@@ -420,7 +423,7 @@ public class JiffSpan {
     /** `secs * perSecond + extra`, or a range error for `unit` if that overflows its limit. */
     private static Long scaled(Long secs, Long perSecond, Long extra, JiffUnit unit) {
         Long max = LIMITS.get(unit.ordinal());
-        if (JiffMath.abs(secs) > (max - JiffMath.abs(extra)) / perSecond) {
+        if (JiffMath.greaterThan(JiffMath.abs(secs), (max - JiffMath.abs(extra)) / perSecond)) {
             throw JiffMath.rangeError(JiffMath.plural(unit), -max, max);
         }
         return secs * perSecond + extra;

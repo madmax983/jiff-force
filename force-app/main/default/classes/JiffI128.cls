@@ -44,7 +44,7 @@ public class JiffI128 implements Comparable {
             h += 1;
             l -= BASE;
         }
-        if (h >= HI_LIMIT || h <= -HI_LIMIT) {
+        if (!JiffMath.lessThan(h, HI_LIMIT) || !JiffMath.greaterThan(h, -HI_LIMIT)) {
             throw JiffMath.overflow('128-bit integer arithmetic');
         }
         return new JiffI128(h, l);
@@ -127,10 +127,10 @@ public class JiffI128 implements Comparable {
             return false;
         }
         if (hi == 9) {
-            return lo <= JiffMath.LONG_MAX - 9 * BASE;
+            return !JiffMath.greaterThan(lo, JiffMath.LONG_MAX - 9 * BASE);
         }
         if (hi == -9) {
-            return lo >= JiffMath.LONG_MIN + 9 * BASE;
+            return !JiffMath.lessThan(lo, JiffMath.LONG_MIN + 9 * BASE);
         }
         return true;
     }
@@ -200,10 +200,16 @@ public class JiffI128 implements Comparable {
         }
         Long newLo = out.get(1) * LIMB + out.get(0);
         Long newHi = out.get(3) * LIMB + out.get(2);
-        if (newHi >= HI_LIMIT) {
+        if (!JiffMath.lessThan(newHi, HI_LIMIT)) {
             throw JiffMath.overflow('128-bit integer arithmetic');
         }
         return negative ? new JiffI128(-newHi, -newLo) : new JiffI128(newHi, newLo);
+    }
+
+    /** Whether the non-negative value `(hi, lo)` is at least `(otherHi, otherLo)`. */
+    private static Boolean atLeast(Long hi, Long lo, Long otherHi, Long otherLo) {
+        Integer byHi = JiffMath.compare(hi, otherHi);
+        return byHi != 0 ? byHi > 0 : !JiffMath.lessThan(lo, otherLo);
     }
 
     private static Long limb(Long nonNegative, Integer index) {
@@ -245,7 +251,7 @@ public class JiffI128 implements Comparable {
                 rLo = (rLo - carry * TOP_DIGIT) * 10 + digit;
                 rHi = rHi * 10 + carry;
                 Long count = 0L;
-                while (rHi > d.hi || (rHi == d.hi && rLo >= d.lo)) {
+                while (atLeast(rHi, rLo, d.hi, d.lo)) {
                     rHi -= d.hi;
                     rLo -= d.lo;
                     if (rLo < 0) {
@@ -283,10 +289,7 @@ public class JiffI128 implements Comparable {
 
     public Integer compareTo(Object other) {
         JiffI128 that = (JiffI128) other;
-        if (hi != that.hi) {
-            return hi < that.hi ? -1 : 1;
-        }
-        return JiffMath.compare(lo, that.lo);
+        return hi != that.hi ? JiffMath.compare(hi, that.hi) : JiffMath.compare(lo, that.lo);
     }
 
     public Boolean equals(Object other) {

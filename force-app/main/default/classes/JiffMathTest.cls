@@ -83,6 +83,25 @@ private class JiffMathTest {
     }
 
     @IsTest
+    static void comparesLargeValuesExactly() {
+        // Neighbouring values this large round to the same 64 bit float.
+        Assert.areEqual(1, JiffMath.compare(JiffMath.LONG_MAX, JiffMath.LONG_MAX - 1));
+        Assert.areEqual(-1, JiffMath.compare(JiffMath.LONG_MAX - 1, JiffMath.LONG_MAX));
+        Assert.areEqual(-1, JiffMath.compare(JiffMath.LONG_MIN, JiffMath.LONG_MIN + 1));
+        Assert.areEqual(1, JiffMath.compare(9007199254740993L, 9007199254740992L));
+        Assert.areEqual(-1, JiffMath.compare(-9007199254740993L, -9007199254740992L));
+        Assert.areEqual(1, JiffMath.compare(1000000000000000001L, 1000000000000000000L));
+        Assert.areEqual(0, JiffMath.compare(JiffMath.LONG_MIN, JiffMath.LONG_MIN));
+        Assert.areEqual(-1, JiffMath.compare(JiffMath.LONG_MIN, JiffMath.LONG_MAX));
+        Assert.areEqual(-1, JiffMath.compare(-1L, 1L));
+        Assert.areEqual(1, JiffMath.compare(999999999L, -1000000000L));
+        Assert.isTrue(JiffMath.lessThan(JiffMath.LONG_MAX - 1, JiffMath.LONG_MAX));
+        Assert.isFalse(JiffMath.lessThan(JiffMath.LONG_MAX, JiffMath.LONG_MAX));
+        Assert.isTrue(JiffMath.greaterThan(JiffMath.LONG_MAX, JiffMath.LONG_MAX - 1));
+        Assert.isFalse(JiffMath.greaterThan(JiffMath.LONG_MAX - 1, JiffMath.LONG_MAX));
+    }
+
+    @IsTest
     static void checkedNegationRejectsTheMinimum() {
         Assert.areEqual(-JiffMath.LONG_MAX, JiffMath.checkedNeg(JiffMath.LONG_MAX, 'test'));
         Assert.isTrue(overflows('neg', JiffMath.LONG_MIN, 0L));

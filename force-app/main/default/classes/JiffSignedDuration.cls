@@ -395,7 +395,7 @@ public class JiffSignedDuration implements Comparable {
     public Integer compareTo(Object other) {
         JiffSignedDuration that = (JiffSignedDuration) other;
         if (secs != that.secs) {
-            return secs < that.secs ? -1 : 1;
+            return JiffMath.compare(secs, that.secs);
         }
         return nanos < that.nanos ? -1 : (nanos > that.nanos ? 1 : 0);
     }

@@ -10,6 +10,7 @@ and ISO 8601 / RFC 9557 / RFC 2822 / strftime formatting.
 | --- | --- |
 | `force-app/main/default/classes/` | The library. Every class is `Jiff*`; tests are `Jiff*Test`. |
 | `tools/apexjvm/` | Local test harness: translates the Apex to Java and runs the tests on the JVM. |
+| (external) `aer` | [AER](https://github.com/octoberswimmer/aer-dist), a local Apex runtime. The second, more faithful test runner. |
 | `oracle/` | Rust crate pinned to `jiff = "=1.0.0"` that generates golden test vectors. |
 | `docs/adr/` | Architecture decision records. |
 
@@ -20,18 +21,27 @@ The Jiff source is the specification. Get it with `cd oracle && cargo fetch`; it
 
 ```bash
 npm install                 # once
-npm test                    # translate + compile + run every Apex test locally (~1s)
+npm test                    # JVM harness: translate + compile + run every Apex test (~1s)
 npm test -- --filter JiffDate          # only tests whose Class.method contains the text
+npm run test:aer -- -f JiffDateTest    # AER: run one test class on a real Apex runtime
 npm run fmt                 # prettier-plugin-apex; also the only check that uses Salesforce's real parser
 npm run fmt:check
 npm run meta                # create missing *.cls-meta.xml files
 npm run test:coverage       # line coverage via JaCoCo, gate at 85%
 ```
 
-Before every commit: `npm run meta && npm run fmt && npm test`.
+Before every commit: `npm run meta && npm run fmt && npm test`, then run the test classes you
+touched under AER (`npm run test:aer -- -f JiffXTest`). A change is not done until both pass.
 
-There is no Salesforce org wired into this repo's local loop. `npm test` is the red/green loop.
-A real org is the final authority; see `docs/adr/0002-local-jvm-test-harness.md`.
+Two runners, on purpose (see `docs/adr/0002-local-test-runners.md`):
+
+- **The JVM harness (`npm test`)** is fast, unlimited and strict. It is the full-suite gate.
+- **AER (`aer test force-app`)** is an independent Apex runtime with its own parser and type
+  checker, so it catches Apex-vs-Java differences the harness cannot. Its free tier runs at most
+  100 test methods per invocation; a full-suite AER run needs `AER_LICENSE_KEY`. Without a key,
+  run AER on the classes you are working on with `-f`. Do not script around the limit.
+
+There is no Salesforce org in the loop. A real org remains the final authority.
 
 ## The Apex subset (enforced by the harness)
 
@@ -48,6 +58,11 @@ Apex and Java; do not work around them.
    `new List<Long>{ 1L, 2L }`. Plain `Long x = 5;` is fine.
 3. **No overflow reliance.** Use `JiffMath.checkedAdd/checkedSub/checkedMul/checkedNeg` whenever
    an operation could overflow. Never depend on wrap-around.
+3a. **Compare large Longs with `JiffMath.compare` / `lessThan` / `greaterThan`,** never with
+   `<` `>` `<=` `>=`, whenever either operand may exceed 2^53 (about 9 * 10^15): seconds of a
+   `JiffSignedDuration`, nanosecond totals, anything near `LONG_MAX`. AER evaluates the
+   relational operators on Longs through a 64 bit float, so nearby large values compare as
+   equal. `==`, `!=` and arithmetic are exact. Comparing against zero is always safe.
 4. **Division truncates toward zero; `Math.mod` takes the dividend's sign.** For floor semantics
    use `JiffMath.floorDiv` / `JiffMath.floorMod`. Prefer `JiffMath.truncMod` over `Math.mod`.
 5. **Strings: compare with `.equals()`** (case sensitive). `==` on strings is case-insensitive in
