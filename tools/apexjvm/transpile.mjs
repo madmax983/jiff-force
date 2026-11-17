@@ -128,6 +128,22 @@ const DECLARING_RULES = new Set([
     "enhancedForControl",
 ]);
 
+// Declarations that introduce a variable (as opposed to a type or a method).
+const VARIABLE_RULES = new Set([
+    "variableDeclarator",
+    "formalParameter",
+    "catchClause",
+    "enhancedForControl",
+]);
+
+// Platform types the library refers to by simple name.
+const SYSTEM_TYPES = new Set(
+    (
+        "string integer long double boolean object list map set math system datetime date time " +
+        "timezone assert test userinfo exception"
+    ).split(" "),
+);
+
 function ruleName(parser, node) {
     return parser.ruleNames[node.ruleIndex];
 }
@@ -158,9 +174,10 @@ export function collectEnums(source) {
  * @param {string} fileName   e.g. `JiffDate.cls`, used in diagnostics
  * @param {string} source     Apex source text
  * @param {Set<string>} enums lower-cased names of all enums in the project
+ * @param {Set<string>} typeNames lower-cased names of all classes in the project
  * @returns {{java: string, errors: string[], isTest: boolean, className: string}}
  */
-export function transpile(fileName, source, enums) {
+export function transpile(fileName, source, enums, typeNames = new Set()) {
     const errors = [];
     const listener = {
         syntaxError: (_r, _sym, line, col, msg) => errors.push(`${fileName}:${line}:${col} ${msg}`),
@@ -177,6 +194,26 @@ export function transpile(fileName, source, enums) {
         const tok = isTerminal(node) ? node.symbol : node.start;
         errors.push(`${fileName}:${tok.line}:${tok.column} ${msg}`);
     };
+
+    // Apex identifiers are case-insensitive and Java's are not. Two variables in
+    // one class that differ only by case are the same name in Apex (the inner
+    // one silently shadows the outer), and a variable named like a type hides
+    // that type. Both compile and run here, so both are rejected.
+    const variableSpellings = new Map();
+    function checkVariableName(node, text) {
+        const lower = text.toLowerCase();
+        const seen = variableSpellings.get(lower);
+        if (seen !== undefined && seen !== text) {
+            fail(
+                node,
+                `'${text}' and '${seen}' are the same identifier in Apex (names ignore case)`,
+            );
+        }
+        variableSpellings.set(lower, text);
+        if (typeNames.has(lower) || SYSTEM_TYPES.has(lower)) {
+            fail(node, `variable '${text}' hides the type of the same name (names ignore case)`);
+        }
+    }
 
     let isTest = false;
     let className = fileName.replace(/\.cls$/, "");
@@ -249,16 +286,111 @@ export function transpile(fileName, source, enums) {
         const parent = node.parentCtx;
         const generic = parent && rn(parent) === "typeList";
         if (PRIMITIVES.has(lower) && !generic) {
-            return lead(node.start.tokenIndex) + PRIMITIVES.get(lower);
+            // A value that the code itself treats as possibly null stays a
+            // boxed Java type; everything else becomes a primitive.
+            const java = isNullable(node)
+                ? lower[0].toUpperCase() + lower.slice(1)
+                : PRIMITIVES.get(lower);
+            return lead(node.start.tokenIndex) + java;
         }
-        // `System.Integer` (and friends) is how the subset spells "this one may
-        // be null": it stays a boxed Java type instead of becoming a primitive.
         if (lower.startsWith("system.") && PRIMITIVES.has(lower.slice(7))) {
-            const name = lower.slice(7);
-            return lead(node.start.tokenIndex) + name[0].toUpperCase() + name.slice(1);
+            fail(node, `write '${text.slice(7)}', not '${text}' (AER rejects the qualified name)`);
         }
         if (lower === "decimal") fail(node, "Decimal is not part of the supported subset");
         return children(node);
+    }
+
+    /** Whether `name` is assigned null or compared with null anywhere under `scope`. */
+    function nullTouched(scope, name) {
+        const wanted = new Set([name.toLowerCase(), "this." + name.toLowerCase()]);
+        let found = false;
+        (function walk(n) {
+            if (found || isTerminal(n) || !n.children) return;
+            const kind = n.constructor.name;
+            const first = n.children[0].getText().toLowerCase();
+            const last = n.children[n.children.length - 1].getText().toLowerCase();
+            if (kind === "EqualityExpressionContext" || kind === "AssignExpressionContext") {
+                if (wanted.has(first) && last === "null") found = true;
+                if (kind === "EqualityExpressionContext" && first === "null" && wanted.has(last)) {
+                    found = true;
+                }
+            } else if (rn(n) === "variableDeclarator" && n.children.length === 3) {
+                if (wanted.has(first) && last === "null") found = true;
+            }
+            for (const c of n.children) walk(c);
+        })(scope);
+        return found;
+    }
+
+    /** Whether a method body contains `return null` (directly or as a ternary branch). */
+    function returnsNull(method) {
+        let found = false;
+        (function walk(n) {
+            if (found || isTerminal(n) || !n.children) return;
+            if (rn(n) === "returnStatement") {
+                const value = n.children.find((c) => !isTerminal(c));
+                if (value) {
+                    const parts =
+                        value.constructor.name === "CondExpressionContext"
+                            ? [value.children[2], value.children[4]]
+                            : [value];
+                    if (parts.some((part) => part.getText().toLowerCase() === "null")) found = true;
+                }
+                return;
+            }
+            for (const c of n.children) walk(c);
+        })(method);
+        return found;
+    }
+
+    function enclosing(node, rules) {
+        for (let p = node.parentCtx; p; p = p.parentCtx) if (rules.includes(rn(p))) return p;
+        return null;
+    }
+
+    function declaredNames(node) {
+        const declarators = node.children.find(
+            (c) => !isTerminal(c) && rn(c) === "variableDeclarators",
+        );
+        return declarators.children
+            .filter((c) => !isTerminal(c))
+            .map((d) => d.children[0].getText());
+    }
+
+    /**
+     * Apex `Integer`, `Long`, `Boolean` and `Double` can be null; Java
+     * primitives cannot. A declaration is treated as nullable exactly when the
+     * code in its scope treats it that way: the name is assigned or compared
+     * with null, or (for a method's return type) the method returns null.
+     */
+    function isNullable(typeRef) {
+        const parent = typeRef.parentCtx;
+        const body = ["methodDeclaration", "constructorDeclaration"];
+        switch (rn(parent)) {
+            case "methodDeclaration":
+                return returnsNull(parent);
+            case "formalParameter": {
+                const name = parent.children
+                    .find((c) => !isTerminal(c) && rn(c) === "id")
+                    .getText();
+                const scope = enclosing(parent, body);
+                return scope !== null && nullTouched(scope, name);
+            }
+            case "localVariableDeclaration": {
+                const scope = enclosing(parent, body) || tree;
+                return declaredNames(parent).some((name) => nullTouched(scope, name));
+            }
+            case "enhancedForControl": {
+                const name = parent.children
+                    .find((c) => !isTerminal(c) && rn(c) === "id")
+                    .getText();
+                return nullTouched(enclosing(parent, ["forStatement"]), name);
+            }
+            case "fieldDeclaration":
+                return declaredNames(parent).some((name) => nullTouched(tree, name));
+            default:
+                return false;
+        }
     }
 
     function emitModifier(node) {
@@ -335,7 +467,8 @@ export function transpile(fileName, source, enums) {
                 const isFinal = texts.includes("final");
                 for (const d of decl.children[1].children) {
                     if (isTerminal(d)) continue;
-                    if (PRIMITIVES.has(type) && !isFinal && d.children.length === 1) {
+                    const nullable = nullTouched(tree, d.children[0].getText());
+                    if (PRIMITIVES.has(type) && !isFinal && !nullable && d.children.length === 1) {
                         fail(
                             d,
                             `field '${d.getText()}' must be final or initialized ` +
@@ -585,6 +718,8 @@ export function transpile(fileName, source, enums) {
                 ) {
                     fail(node, `'${text}' is a reserved word in Apex and cannot be declared`);
                 }
+                if (node.parentCtx && VARIABLE_RULES.has(rn(node.parentCtx)))
+                    checkVariableName(node, text);
                 return children(node);
             }
             case "insertStatement":

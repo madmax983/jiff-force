@@ -39,7 +39,10 @@ public class JiffMath {
 
     /** The non-negative remainder of `floorDiv`. `divisor` must be positive. */
     public static Long floorMod(Long dividend, Long divisor) {
-        return dividend - floorDiv(dividend, divisor) * divisor;
+        // Built from the truncating remainder rather than from `floorDiv`, whose product
+        // with the divisor can fall below the smallest Long when the dividend is near it.
+        Long remainder = dividend - (dividend / divisor) * divisor;
+        return remainder < 0 ? remainder + divisor : remainder;
     }
 
     /** The remainder of truncating division; it takes the sign of the dividend. */

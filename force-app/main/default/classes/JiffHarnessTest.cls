@@ -122,6 +122,57 @@ private class JiffHarnessTest {
         }
     }
 
+    private class Holder {
+        private Integer optional;
+        private final Long required;
+
+        Holder(Long required) {
+            this.required = required;
+        }
+
+        Boolean isUnset() {
+            return optional == null;
+        }
+
+        void assign(Integer value) {
+            optional = value;
+        }
+
+        Integer orZero() {
+            return optional == null ? 0 : optional;
+        }
+    }
+
+    private static Integer lengthOrNull(String text) {
+        if (text == null) {
+            return null;
+        }
+        return text.length();
+    }
+
+    private static Long doubled(Long value) {
+        return value == null ? null : value * 2;
+    }
+
+    @IsTest
+    static void numbersCanBeNullWhereTheCodeAllowsIt() {
+        Assert.isNull(lengthOrNull(null));
+        Assert.areEqual(3, lengthOrNull('abc'));
+        Integer missing = lengthOrNull(null);
+        Assert.isTrue(missing == null);
+        Assert.isNull(doubled(null));
+        Assert.areEqual(10L, doubled(5L));
+        Holder holder = new Holder(7L);
+        Assert.isTrue(holder.isUnset());
+        Assert.areEqual(0, holder.orZero());
+        holder.assign(4);
+        Assert.isFalse(holder.isUnset());
+        Assert.areEqual(4, holder.orZero());
+        Map<String, Long> lookup = new Map<String, Long>{ 'a' => 1L };
+        Long absent = lookup.get('b');
+        Assert.isTrue(absent == null);
+    }
+
     @IsTest
     static void customExceptionsCarryTheirMessage() {
         try {

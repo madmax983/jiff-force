@@ -145,8 +145,8 @@ public class JiffI128 implements Comparable {
     public Double toDouble() {
         Double upper = hi;
         Double lower = lo;
-        Double base = BASE;
-        return upper * base + lower;
+        Double scale = BASE;
+        return upper * scale + lower;
     }
 
     /**

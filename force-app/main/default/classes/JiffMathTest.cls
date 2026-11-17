@@ -29,6 +29,11 @@ private class JiffMathTest {
         Assert.areEqual(0L, JiffMath.floorMod(-6L, 3L));
         Assert.areEqual(-1L, JiffMath.truncMod(-7L, 3L));
         Assert.areEqual(1L, JiffMath.truncMod(7L, -3L));
+        // Dividends at the edge of the Long range must not overflow on the way.
+        Assert.areEqual(30592L, JiffMath.floorMod(JiffMath.LONG_MIN, 86400L));
+        Assert.areEqual(-106751991167301L, JiffMath.floorDiv(JiffMath.LONG_MIN, 86400L));
+        Assert.areEqual(55807L, JiffMath.floorMod(JiffMath.LONG_MAX, 86400L));
+        Assert.areEqual(0L, JiffMath.floorMod(JiffMath.LONG_MIN, 1L));
         // -1 second before the epoch is the last second of the previous day.
         Assert.areEqual(-1L, JiffMath.floorDiv(-1L, 86400L));
         Assert.areEqual(86399L, JiffMath.floorMod(-1L, 86400L));

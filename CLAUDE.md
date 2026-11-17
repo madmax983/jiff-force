@@ -49,11 +49,18 @@ The harness translates Apex to Java, so the library is written in a disciplined 
 The translator rejects anything outside it. The rules exist because of real differences between
 Apex and Java; do not work around them.
 
-1. **`Integer`, `Long`, `Boolean`, `Double` are never null.** They become Java primitives.
-   - Fields of these types must be `final` or have an initializer.
-   - When a value genuinely needs to be nullable, spell the type `System.Integer` /
-     `System.Long` / `System.Boolean` / `System.Double`. Use this sparingly.
+1. **`Integer`, `Long`, `Boolean`, `Double` are non-null unless the code says otherwise.** They
+   become Java primitives, except where the code in scope treats the value as possibly null: a
+   method that contains `return null`, or a parameter, local or field that is assigned `null` or
+   compared with `null`. Those stay boxed. So nullable values are written the natural Apex way
+   (`Integer dayOfYearNoLeap()` with `return null`), and a caller that needs to test the result
+   for null assigns it to a local and compares that local with `null`.
+   - Do not spell types `System.Integer` etc.; AER rejects the qualified names.
+   - Non-nullable fields of these types must be `final` or have an initializer.
    - Collections hold boxed values as usual: `List<Long>`, `Map<String, Integer>`.
+1a. **Names ignore case in Apex.** Two variables in one class that differ only by case (`hour`
+   and `HOUR`) are the same identifier: the inner one silently shadows the outer. A variable
+   named like a type (`String string`) hides the type. The harness rejects both.
 2. **Write `L` on Long literals** that go into a `List<Long>` or a `Long` varargs-like position:
    `new List<Long>{ 1L, 2L }`. Plain `Long x = 5;` is fine.
 3. **No overflow reliance.** Use `JiffMath.checkedAdd/checkedSub/checkedMul/checkedNeg` whenever

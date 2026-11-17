@@ -51,10 +51,11 @@ const sources = listFiles(classesDir, ".cls").map((file) => ({
     text: fs.readFileSync(file, "utf8"),
 }));
 const enums = new Set(sources.flatMap((s) => collectEnums(s.text)));
+const typeNames = new Set(sources.map((s) => s.name.replace(/\.cls$/, "").toLowerCase()));
 const tests = [];
 const errors = [];
 for (const s of sources) {
-    const result = transpile(s.name, s.text, enums);
+    const result = transpile(s.name, s.text, enums, typeNames);
     errors.push(...result.errors);
     if (result.isTest) tests.push(result.className);
     fs.writeFileSync(path.join(srcOut, s.name.replace(/\.cls$/, ".java")), result.java);
