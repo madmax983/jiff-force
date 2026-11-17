@@ -158,6 +158,26 @@ public class JiffTimestamp implements Comparable {
         return fromMillisecond(value.getTime());
     }
 
+    /**
+     * Parses an RFC 3339 timestamp, such as `2024-06-19T19:22:45Z`. This is the inverse of
+     * `toString()`.
+     *
+     *     JiffTimestamp.parse('2024-06-19T19:22:45Z');
+     *     JiffTimestamp.parse('2024-06-19T15:22:45-04:00');   // the same instant
+     *     JiffTimestamp.parse('2024-06-19 19:22:45.123+00');  // space, fraction, short offset
+     *     JiffTimestamp.parse('2024-06-19T15:22:45-04:00[America/New_York]');
+     *                                                         // the annotation is ignored
+     *
+     * The string must have a time and an offset (`Z` or numeric), since otherwise it does not
+     * identify an instant. See `JiffTemporal.parseTimestamp` for everything that is accepted.
+     * Throws `JiffException` when the text is not a valid timestamp or is out of range.
+     *
+     * Mirrors `impl FromStr for jiff::Timestamp`.
+     */
+    public static JiffTimestamp parse(String text) {
+        return JiffTemporal.parseTimestamp(text);
+    }
+
     // ---- accessors ------------------------------------------------------
 
     /** Whole seconds since the epoch, truncated toward zero. */

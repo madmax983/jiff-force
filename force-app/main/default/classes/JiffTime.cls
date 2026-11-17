@@ -130,6 +130,26 @@ public class JiffTime implements Comparable {
         return new JiffTimeWith(this);
     }
 
+    /**
+     * Parses a time in ISO 8601 format, such as `15:22:45`. This is the inverse of
+     * `toString()`.
+     *
+     *     JiffTime.parse('15:22:45');             // 15:22:45
+     *     JiffTime.parse('15:22:45.123456789');   // with a fraction of a second
+     *     JiffTime.parse('15:22');                // 15:22:00
+     *     JiffTime.parse('T1522');                // 15:22:00, in the basic format
+     *     JiffTime.parse('2024-06-19T15:22:45');  // the date of a datetime is ignored
+     *
+     * A second of `60` is read as `59`. A bare time without colons that could also be a date,
+     * such as `1214`, is rejected unless it starts with `T`. See `JiffTemporal.parseTime` for
+     * everything that is accepted. Throws `JiffException` when the text is not a valid time.
+     *
+     * Mirrors `impl FromStr for jiff::civil::Time`.
+     */
+    public static JiffTime parse(String text) {
+        return JiffTemporal.parseTime(text);
+    }
+
     // ---- accessors ------------------------------------------------------
 
     /** The hour, in `0..23`. */
