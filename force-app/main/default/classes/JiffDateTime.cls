@@ -132,6 +132,29 @@ public class JiffDateTime implements Comparable {
     }
 
     /**
+     * The wall clock reading of a platform `Datetime` in the given time zone: the civil
+     * datetime that a calendar and a clock in that zone show at that instant. A null
+     * `Datetime`, such as an empty record field, gives null.
+     *
+     *     Datetime created = Datetime.newInstanceGmt(2024, 7, 4, 12, 39, 0);
+     *     JiffDateTime.fromSystemDatetime(created, JiffTimeZone.get('America/New_York'));
+     *     // 2024-07-04T08:39:00
+     *
+     * The result has forgotten the instant and the zone; use
+     * `JiffZonedDateTime.fromSystemDatetime` to keep them. Throws if the `Datetime` is outside
+     * the supported range.
+     */
+    public static JiffDateTime fromSystemDatetime(Datetime value, JiffTimeZone tz) {
+        if (tz == null) {
+            throw new JiffException('the time zone to read a Datetime in must not be null');
+        }
+        if (value == null) {
+            return null;
+        }
+        return tz.toDateTime(JiffTimestamp.fromSystemDatetime(value));
+    }
+
+    /**
      * Starts building a new datetime from this one with some fields replaced:
      *
      *     JiffDateTime dt1 = JiffDateTime.newInstance(2024, 10, 31, 0, 0, 0, 0);
@@ -280,6 +303,50 @@ public class JiffDateTime implements Comparable {
      */
     public JiffIsoWeekDate toIsoWeekDate() {
         return dateValue.toIsoWeekDate();
+    }
+
+    /**
+     * This civil datetime in the given time zone, as a zoned datetime: the instant at which
+     * clocks in that zone show it, together with the zone.
+     *
+     * Most civil datetimes happen exactly once in a zone. One that the zone skips or repeats
+     * is resolved with the `COMPATIBLE` strategy: a skipped time moves forward by the length
+     * of the gap, and a repeated time means its first occurrence. Use
+     * `JiffTimeZone.toAmbiguousZonedDateTime` to choose differently.
+     *
+     *     JiffTimeZone tz = JiffTimeZone.get('America/New_York');
+     *     JiffDateTime.newInstance(2024, 3, 10, 2, 30, 0, 0).toZonedDateTime(tz);
+     *     // 2024-03-10T03:30:00-04:00[America/New_York]
+     *
+     * Throws if the instant is outside the range of `JiffTimestamp`, which can only happen
+     * within about a day of `MIN` or `MAX`.
+     */
+    public JiffZonedDateTime toZonedDateTime(JiffTimeZone tz) {
+        return JiffZonedDateTime.fromDateTime(this, tz);
+    }
+
+    /**
+     * This civil datetime in the time zone with the given IANA name. Shorthand for
+     * `toZonedDateTime(JiffTimeZone.get(name))`; throws if the platform does not know the
+     * name.
+     */
+    public JiffZonedDateTime inTz(String name) {
+        return toZonedDateTime(JiffTimeZone.get(name));
+    }
+
+    /**
+     * Converts to the platform `Datetime` for the instant at which clocks in the given time
+     * zone show this civil datetime, resolving a gap or a fold with the `COMPATIBLE`
+     * strategy. A `Datetime` has millisecond precision, so anything finer is dropped,
+     * truncating toward the epoch as `JiffTimestamp.toSystemDatetime` does.
+     *
+     * Throws if the instant is outside the range of `JiffTimestamp`.
+     */
+    public Datetime toSystemDatetime(JiffTimeZone tz) {
+        if (tz == null) {
+            throw new JiffException('the time zone to resolve a datetime in must not be null');
+        }
+        return tz.toTimestamp(this).toSystemDatetime();
     }
 
     // ---- neighbouring datetimes -----------------------------------------

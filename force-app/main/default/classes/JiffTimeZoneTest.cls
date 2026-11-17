@@ -1278,4 +1278,85 @@ private class JiffTimeZoneTest {
         assertPrevious(tz, utc(2024, 1, 1, 0), sec(1617458400L));
         assertNext(tz, utc(2024, 1, 1, 0), null);
     }
+
+    // ---- civil to zoned datetime ----------------------------------------
+
+    @IsTest
+    static void toZonedDateTimeResolvesGapsAndFoldsCompatibly() {
+        JiffTimeZone tz = zone('America/New_York');
+        // This demonstrates disambiguation behavior for a gap.
+        Assert.areEqual(
+            '2024-03-10T03:30:00-04:00[America/New_York]',
+            tz.toZonedDateTime(dt(2024, 3, 10, 2, 30, 0, 0)).toString()
+        );
+        // This demonstrates disambiguation behavior for a fold. Notice the offset: the -04
+        // corresponds to the time while still in DST.
+        Assert.areEqual(
+            '2024-11-03T01:30:00-04:00[America/New_York]',
+            tz.toZonedDateTime(dt(2024, 11, 3, 1, 30, 0, 0)).toString()
+        );
+        Assert.areEqual(
+            '2024-07-04T12:00:00+05:30[Asia/Kolkata]',
+            zone('Asia/Kolkata').toZonedDateTime(dt(2024, 7, 4, 12, 0, 0, 0)).toString()
+        );
+        Assert.areEqual(
+            '2024-07-04T12:00:00-05:00[-05:00]',
+            JiffTimeZone.fixed(hours(-5)).toZonedDateTime(dt(2024, 7, 4, 12, 0, 0, 0)).toString()
+        );
+        Assert.areEqual(
+            '2024-03-31T01:30:00Z[Etc/Unknown]',
+            JiffTimeZone.unknown().toZonedDateTime(dt(2024, 3, 31, 1, 30, 0, 0)).toString()
+        );
+    }
+
+    @IsTest
+    static void toZonedDateTimeNamesTheZoneWhenTheInstantIsOutOfRange() {
+        try {
+            JiffTimeZone.UTC.toZonedDateTime(JiffDateTime.MAX);
+            Assert.fail('expected the maximum datetime to have no instant in UTC');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'error converting datetime to instant in time zone UTC: converting datetime ' +
+                    'with time zone offset `+00` to timestamp overflowed: ' +
+                    RANGE_SECONDS,
+                e.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    static void toAmbiguousZonedDateTimeLeavesTheChoiceOpen() {
+        JiffTimeZone tz = zone('America/New_York');
+        // This is not ambiguous:
+        JiffAmbiguousZonedDateTime plain = tz.toAmbiguousZonedDateTime(dt(2024, 3, 10, 1, 0, 0, 0));
+        Assert.isFalse(plain.isAmbiguous());
+        Assert.areEqual(
+            '2024-03-10T01:00:00-05:00[America/New_York]',
+            plain.unambiguous().toString()
+        );
+        Assert.areEqual(tz, plain.timeZone());
+        // But this is a gap, and thus ambiguous! So an error is returned.
+        JiffAmbiguousZonedDateTime gap = tz.toAmbiguousZonedDateTime(dt(2024, 3, 10, 2, 0, 0, 0));
+        Assert.areEqual(JiffAmbiguousOffset.gap(hours(-5), hours(-4)), gap.offset());
+        try {
+            gap.unambiguous();
+            Assert.fail('expected a datetime in a gap to be rejected');
+        } catch (JiffException e) {
+            Assert.isTrue(e.getMessage().contains('gap'), e.getMessage());
+        }
+        // And so is this, because it's a fold.
+        JiffAmbiguousZonedDateTime fold = tz.toAmbiguousZonedDateTime(dt(2024, 11, 3, 1, 0, 0, 0));
+        Assert.areEqual(JiffAmbiguousOffset.fold(hours(-4), hours(-5)), fold.offset());
+        try {
+            fold.unambiguous();
+            Assert.fail('expected a datetime in a fold to be rejected');
+        } catch (JiffException e) {
+            Assert.isTrue(e.getMessage().contains('fold'), e.getMessage());
+        }
+        // It carries the same answer as the ambiguous timestamp.
+        Assert.areEqual(
+            tz.toAmbiguousTimestamp(dt(2024, 11, 3, 1, 0, 0, 0)).later(),
+            fold.later().toTimestamp()
+        );
+    }
 }

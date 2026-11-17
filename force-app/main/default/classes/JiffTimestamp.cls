@@ -255,6 +255,26 @@ public class JiffTimestamp implements Comparable {
         return Datetime.newInstance(asMillisecond());
     }
 
+    /**
+     * This instant as it reads in the given time zone: a zoned datetime that carries the
+     * instant, the civil datetime and the time zone together. This never fails.
+     *
+     *     JiffTimestamp.UNIX_EPOCH.toZonedDateTime(JiffTimeZone.get('America/New_York'));
+     *     // 1969-12-31T19:00:00-05:00[America/New_York]
+     */
+    public JiffZonedDateTime toZonedDateTime(JiffTimeZone tz) {
+        return JiffZonedDateTime.newInstance(this, tz);
+    }
+
+    /**
+     * This instant as it reads in the time zone with the given IANA name. Shorthand for
+     * `toZonedDateTime(JiffTimeZone.get(name))`; throws if the platform does not know the
+     * name.
+     */
+    public JiffZonedDateTime inTz(String name) {
+        return toZonedDateTime(JiffTimeZone.get(name));
+    }
+
     // ---- arithmetic -----------------------------------------------------
 
     /**

@@ -1077,4 +1077,49 @@ private class JiffTimestampTest {
         Datetime original = Datetime.newInstance(1709209845123L);
         Assert.areEqual(original, JiffTimestamp.fromSystemDatetime(original).toSystemDatetime());
     }
+
+    // ---- zoned datetimes --------------------------------------------------
+
+    @IsTest
+    static void readsInATimeZoneByName() {
+        JiffZonedDateTime zdt = stamp(123456789L, 0).inTz('America/New_York');
+        Assert.areEqual('1973-11-29T16:33:09-05:00[America/New_York]', zdt.toString());
+        Assert.areEqual(stamp(123456789L, 0), zdt.toTimestamp());
+        // What time was it at the Unix epoch in Sydney?
+        Assert.areEqual(
+            '1970-01-01T10:00:00+10:00[Australia/Sydney]',
+            JiffTimestamp.UNIX_EPOCH.inTz('Australia/Sydney').toString()
+        );
+        try {
+            JiffTimestamp.UNIX_EPOCH.inTz('does not exist');
+            Assert.fail('expected an unknown time zone to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'failed to find time zone `does not exist` in time zone database',
+                e.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    static void readsInAGivenTimeZone() {
+        JiffTimestamp ts = stamp(123456789L, 0);
+        JiffZonedDateTime zdt = ts.toZonedDateTime(JiffTimeZone.fixed(JiffOffset.fromHours(-4)));
+        // A time zone annotation is still included in the printable version of the zoned
+        // datetime, but it is fixed to a particular offset.
+        Assert.areEqual('1973-11-29T17:33:09-04:00[-04:00]', zdt.toString());
+        Assert.areEqual(
+            '1973-11-29T21:33:09+00:00[UTC]',
+            ts.toZonedDateTime(JiffTimeZone.UTC).toString()
+        );
+        // The limits can be read in any zone.
+        Assert.areEqual(
+            '9999-12-30T22:00:00.999999999+00:00[UTC]',
+            JiffTimestamp.MAX.toZonedDateTime(JiffTimeZone.UTC).toString()
+        );
+        Assert.areEqual(
+            '-009999-01-02T01:59:59+00:00[UTC]',
+            JiffTimestamp.MIN.inTz('UTC').toString()
+        );
+    }
 }

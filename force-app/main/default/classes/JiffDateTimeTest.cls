@@ -478,4 +478,191 @@ private class JiffDateTimeTest {
         Assert.areEqual(civil(2023, 7, 15, 21, 30, 0, 0), series.next());
         Assert.areEqual(civil(2023, 7, 16, 2, 30, 0, 0), series.next());
     }
+
+    // ---- zoned datetimes --------------------------------------------------
+
+    @IsTest
+    static void becomesAZonedDatetimeInAGivenZone() {
+        JiffTimeZone tz = JiffTimeZone.fixed(JiffOffset.fromHours(-4));
+        JiffZonedDateTime zdt = civil(2024, 6, 20, 17, 3, 0, 0).toZonedDateTime(tz);
+        // A time zone annotation is still included in the printable version of the zoned
+        // datetime, but it is fixed to a particular offset.
+        Assert.areEqual('2024-06-20T17:03:00-04:00[-04:00]', zdt.toString());
+        Assert.areEqual(
+            '2024-06-20T17:03:00-04:00[America/New_York]',
+            civil(2024, 6, 20, 17, 3, 0, 0).inTz('America/New_York').toString()
+        );
+        Assert.areEqual(civil(2024, 6, 20, 17, 3, 0, 0), zdt.toDateTime());
+    }
+
+    @IsTest
+    static void aZonedDatetimeResolvesGapsAndFoldsCompatibly() {
+        JiffTimeZone newYork = JiffTimeZone.get('America/New_York');
+        Assert.areEqual(
+            '2024-03-10T03:30:00-04:00[America/New_York]',
+            civil(2024, 3, 10, 2, 30, 0, 0).toZonedDateTime(newYork).toString()
+        );
+        Assert.areEqual(
+            '2024-11-03T01:30:00-04:00[America/New_York]',
+            civil(2024, 11, 3, 1, 30, 0, 0).toZonedDateTime(newYork).toString()
+        );
+        Assert.areEqual(
+            '2024-03-31T02:30:00+01:00[Europe/London]',
+            civil(2024, 3, 31, 1, 30, 0, 0).inTz('Europe/London').toString()
+        );
+        Assert.areEqual(
+            '2024-04-07T02:30:00+11:00[Australia/Sydney]',
+            civil(2024, 4, 7, 2, 30, 0, 0).inTz('Australia/Sydney').toString()
+        );
+    }
+
+    @IsTest
+    static void aZonedDatetimeMustBeAnInstantInRange() {
+        // All errors because the combination of the offset and the datetime isn't enough to
+        // fit into timestamp limits.
+        try {
+            JiffDateTime.MAX.inTz('UTC');
+            Assert.fail('expected the maximum datetime to have no instant in UTC');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'converting datetime with time zone offset `+00` to timestamp overflowed: ' +
+                    'parameter \'Unix timestamp seconds\' is not in the required range of ' +
+                    '-377705023201..=253402207200',
+                e.getMessage()
+            );
+        }
+        // In fact, the only valid offset one can use to turn the maximum civil datetime into
+        // a zoned datetime is the maximum offset:
+        JiffTimeZone tz = JiffOffset.fromSeconds(93599).toTimeZone();
+        Assert.areEqual(
+            '9999-12-31T23:59:59.999999999+25:59[+25:59]',
+            JiffDateTime.MAX.toZonedDateTime(tz).toString()
+        );
+        // One second less than the maximum offset results in a failure at the maximum
+        // datetime boundary.
+        try {
+            JiffDateTime.MAX.toZonedDateTime(JiffOffset.fromSeconds(93598).toTimeZone());
+            Assert.fail('expected the maximum datetime to need the maximum offset');
+        } catch (JiffException e) {
+            Assert.isTrue(e.getMessage().contains('`+25:59:58`'), e.getMessage());
+        }
+        Assert.areEqual(
+            '-009999-01-01T00:00:00-25:59[-25:59]',
+            JiffDateTime.MIN.toZonedDateTime(JiffOffset.fromSeconds(-93599).toTimeZone()).toString()
+        );
+    }
+
+    @IsTest
+    static void aZonedDatetimeNeedsAKnownZone() {
+        try {
+            civil(2024, 6, 20, 15, 6, 0, 0).inTz('does not exist');
+            Assert.fail('expected an unknown time zone to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'failed to find time zone `does not exist` in time zone database',
+                e.getMessage()
+            );
+        }
+    }
+
+    // ---- platform interop -----------------------------------------------
+
+    @IsTest
+    static void readsAPlatformDatetimeOnTheWallClockOfAZone() {
+        Datetime value = Datetime.newInstanceGmt(2024, 7, 4, 12, 39, 0);
+        Assert.areEqual(
+            civil(2024, 7, 4, 8, 39, 0, 0),
+            JiffDateTime.fromSystemDatetime(value, JiffTimeZone.get('America/New_York'))
+        );
+        Assert.areEqual(
+            civil(2024, 7, 4, 18, 9, 0, 0),
+            JiffDateTime.fromSystemDatetime(value, JiffTimeZone.get('Asia/Kolkata'))
+        );
+        Assert.areEqual(
+            civil(2024, 7, 4, 12, 39, 0, 0),
+            JiffDateTime.fromSystemDatetime(value, JiffTimeZone.UTC)
+        );
+        Assert.areEqual(
+            civil(2024, 7, 4, 7, 39, 0, 0),
+            JiffDateTime.fromSystemDatetime(value, JiffTimeZone.fixed(JiffOffset.fromHours(-5)))
+        );
+        // Milliseconds are kept.
+        Assert.areEqual(
+            civil(2024, 7, 4, 8, 39, 0, 123000000),
+            JiffDateTime.fromSystemDatetime(
+                Datetime.newInstance(1720096740123L),
+                JiffTimeZone.get('America/New_York')
+            )
+        );
+    }
+
+    @IsTest
+    static void aNullPlatformDatetimeGivesNull() {
+        Datetime missing = null;
+        Assert.isNull(JiffDateTime.fromSystemDatetime(missing, JiffTimeZone.UTC));
+        try {
+            JiffDateTime.fromSystemDatetime(Datetime.newInstance(0L), null);
+            Assert.fail('expected a missing time zone to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual('the time zone to read a Datetime in must not be null', e.getMessage());
+        }
+    }
+
+    @IsTest
+    static void convertsToAPlatformDatetimeInAZone() {
+        JiffTimeZone newYork = JiffTimeZone.get('America/New_York');
+        Assert.areEqual(
+            Datetime.newInstanceGmt(2024, 7, 4, 12, 39, 0),
+            civil(2024, 7, 4, 8, 39, 0, 0).toSystemDatetime(newYork)
+        );
+        // A skipped time moves forward by the length of the gap: 03:30 at -04.
+        Assert.areEqual(
+            1710055800000L,
+            civil(2024, 3, 10, 2, 30, 0, 0).toSystemDatetime(newYork).getTime()
+        );
+        // A repeated time means its first occurrence: 01:30 at -04.
+        Assert.areEqual(
+            1730611800000L,
+            civil(2024, 11, 3, 1, 30, 0, 0).toSystemDatetime(newYork).getTime()
+        );
+        // Anything finer than a millisecond is dropped, truncating toward the epoch.
+        Assert.areEqual(
+            1720096740123L,
+            civil(2024, 7, 4, 8, 39, 0, 123456789).toSystemDatetime(newYork).getTime()
+        );
+        Assert.areEqual(
+            0L,
+            civil(1969, 12, 31, 23, 59, 59, 999999999).toSystemDatetime(JiffTimeZone.UTC).getTime()
+        );
+        // It is the inverse of reading a platform Datetime in the same zone.
+        Datetime original = Datetime.newInstance(1720096740123L);
+        Assert.areEqual(
+            original,
+            JiffDateTime.fromSystemDatetime(original, newYork).toSystemDatetime(newYork)
+        );
+    }
+
+    @IsTest
+    static void convertingToAPlatformDatetimeCanFail() {
+        try {
+            civil(2024, 7, 4, 8, 39, 0, 0).toSystemDatetime(null);
+            Assert.fail('expected a missing time zone to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'the time zone to resolve a datetime in must not be null',
+                e.getMessage()
+            );
+        }
+        try {
+            JiffDateTime.MAX.toSystemDatetime(JiffTimeZone.UTC);
+            Assert.fail('expected the maximum datetime to have no instant in UTC');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'converting datetime with time zone offset `+00` to timestamp overflowed: ' +
+                    'parameter \'Unix timestamp seconds\' is not in the required range of ' +
+                    '-377705023201..=253402207200',
+                e.getMessage()
+            );
+        }
+    }
 }
