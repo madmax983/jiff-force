@@ -1,0 +1,11 @@
+{
+    "plugins": ["prettier-plugin-apex"],
+    "printWidth": 100,
+    "tabWidth": 4,
+    "overrides": [
+        {
+            "files": "*.cls",
+            "options": { "parser": "apex" }
+        }
+    ]
+}

@@ -37,3 +37,13 @@ sfca_results.json
 
 # Local environment variables
 .env
+
+# Node and local test harness output
+node_modules/
+build/
+
+# Rust oracle build output
+oracle/target/
+
+# JaCoCo jars fetched on demand for coverage runs
+tools/apexjvm/lib/
