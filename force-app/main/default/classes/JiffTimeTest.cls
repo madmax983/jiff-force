@@ -624,4 +624,43 @@ private class JiffTimeTest {
         assertRoundFails(JiffRound.to(JiffUnit.NANOSECOND).increment(-1), expected);
         assertRoundFails(JiffRound.to(JiffUnit.NANOSECOND).increment(1000000001), expected);
     }
+
+    // ---- combining with a date ------------------------------------------
+
+    @IsTest
+    static void combinesWithADateIntoADatetime() {
+        JiffDate day = JiffDate.newInstance(2010, 3, 14);
+        JiffTime halfPastTwo = t(2, 30, 0, 0);
+        Assert.areEqual(JiffDateTime.fromParts(day, halfPastTwo), halfPastTwo.toDateTime(day));
+        Assert.areEqual('2010-03-14T02:30:00', halfPastTwo.toDateTime(day).toString());
+        try {
+            JiffDateTime unexpected = halfPastTwo.toDateTime(null);
+            Assert.fail('expected a missing date to be rejected but got ' + unexpected);
+        } catch (JiffException e) {
+            Assert.areEqual('a datetime needs both a date and a time', e.getMessage());
+        }
+    }
+
+    @IsTest
+    static void buildsADatetimeOnTheGivenDate() {
+        Assert.areEqual('2010-03-14T02:30:00', t(2, 30, 0, 0).onDate(2010, 3, 14).toString());
+        Assert.areEqual(
+            JiffDateTime.newInstance(2024, 2, 29, 15, 22, 45, 123456789),
+            t(15, 22, 45, 123456789).onDate(2024, 2, 29)
+        );
+        // It is the same datetime that `JiffDate.at` builds from the other side.
+        Assert.areEqual(
+            JiffDate.newInstance(2010, 3, 14).at(2, 30, 0, 0),
+            t(2, 30, 0, 0).onDate(2010, 3, 14)
+        );
+        try {
+            JiffDateTime unexpected = t(2, 30, 0, 0).onDate(2023, 2, 29);
+            Assert.fail('expected an invalid date to be rejected but got ' + unexpected);
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'parameter \'day\' for `2023-02` is invalid, must be in range `1..=28`',
+                e.getMessage()
+            );
+        }
+    }
 }
