@@ -349,4 +349,55 @@ private class JiffTemporalOffsetParserTest {
             .requireSecond(true);
         assertParsedAndRest(parser, new List<String>{ '+05 => +05|', '+05:30 => +05:30|' });
     }
+
+    // ---- null arguments -----------------------------------------------------
+
+    @IsTest
+    static void aNullOptionIsRejectedInsteadOfBeingReadAsAnotherSetting() {
+        // A null colon rule used to behave as `ABSENT`, and so reject `+05:30`.
+        JiffTemporalOffsetParser parser = new JiffTemporalOffsetParser();
+        for (Integer option = 0; option < 6; option++) {
+            try {
+                if (option == 0) {
+                    parser.zulu(null);
+                } else if (option == 1) {
+                    parser.requireMinute(null);
+                } else if (option == 2) {
+                    parser.requireSecond(null);
+                } else if (option == 3) {
+                    parser.subminute(null);
+                } else if (option == 4) {
+                    parser.subsecond(null);
+                } else {
+                    parser.colon(null);
+                }
+                Assert.fail('expected a null value to be rejected for option ' + option);
+            } catch (JiffException e) {
+                Assert.areEqual(
+                    'an option of the UTC offset parser must not be null',
+                    e.getMessage(),
+                    'option ' + option
+                );
+            }
+        }
+        // The parser the options were called on is unchanged, and still takes colons.
+        Assert.areEqual('+05:30', parser.parse(new JiffDurationScanner('+05:30')).toString());
+    }
+
+    @IsTest
+    static void aNullScannerIsRejected() {
+        JiffTemporalOffsetParser parser = new JiffTemporalOffsetParser();
+        for (Integer attempt = 0; attempt < 2; attempt++) {
+            try {
+                if (attempt == 0) {
+                    parser.parse(null);
+                } else {
+                    parser.parseOptional(null);
+                }
+                Assert.fail('expected a null scanner to be rejected, attempt ' + attempt);
+            } catch (JiffException e) {
+                Assert.areEqual('cannot parse a UTC offset without input', e.getMessage());
+            }
+        }
+    }
 }

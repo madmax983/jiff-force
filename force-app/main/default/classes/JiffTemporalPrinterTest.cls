@@ -371,6 +371,74 @@ private class JiffTemporalPrinterTest {
         }
     }
 
+    /** Prints a null with the method numbered `which`, for the test below. */
+    private static String printNull(Integer which) {
+        JiffTemporalPrinter printer = new JiffTemporalPrinter();
+        if (which == 0) {
+            return printer.dateToString(null);
+        } else if (which == 1) {
+            return printer.timeToString(null);
+        } else if (which == 2) {
+            return printer.dateTimeToString(null);
+        } else if (which == 3) {
+            return printer.timestampToString(null);
+        } else if (which == 4) {
+            return printer.timestampWithOffsetToString(null, JiffOffset.UTC);
+        } else if (which == 5) {
+            return printer.timestampWithOffsetToString(JiffTimestamp.UNIX_EPOCH, null);
+        } else if (which == 6) {
+            return printer.isoWeekDateToString(null);
+        } else if (which == 7) {
+            return printer.timeZoneToString(null);
+        } else if (which == 8) {
+            return printer.piecesToString(null);
+        } else if (which == 9) {
+            return JiffTemporal.printDate(null);
+        } else if (which == 10) {
+            return JiffTemporal.printOffset(null);
+        } else if (which == 11) {
+            return JiffTemporal.printTimestampWithOffset(JiffTimestamp.UNIX_EPOCH, null);
+        }
+        return JiffTemporal.printPieces(null);
+    }
+
+    @IsTest
+    static void aNullValueIsRejectedByEveryPrintingMethod() {
+        List<String> expected = new List<String>{
+            'cannot print a null date',
+            'cannot print a null time',
+            'cannot print a null datetime',
+            'cannot print a null timestamp',
+            'cannot print a null timestamp',
+            'cannot print a null offset',
+            'cannot print a null ISO week date',
+            'cannot print a null time zone',
+            'cannot print null datetime pieces',
+            'cannot print a null date',
+            'cannot print a null offset',
+            'cannot print a null offset',
+            'cannot print null datetime pieces'
+        };
+        for (Integer which = 0; which < expected.size(); which++) {
+            try {
+                String printed = printNull(which);
+                Assert.fail('expected null to be rejected by method ' + which + ': ' + printed);
+            } catch (JiffException e) {
+                Assert.areEqual(expected.get(which), e.getMessage(), 'method ' + which);
+            }
+        }
+    }
+
+    @IsTest
+    static void theLowercaseOptionMustNotBeNull() {
+        try {
+            new JiffTemporalPrinter().lowercase(null);
+            Assert.fail('expected a null lowercase option to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual('the lowercase option must be true or false, not null', e.getMessage());
+        }
+    }
+
     @IsTest
     static void theDefaultPrinterIsWhatToStringUses() {
         JiffTemporalPrinter printer = new JiffTemporalPrinter();

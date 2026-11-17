@@ -406,6 +406,88 @@ private class JiffPiecesTest {
     }
 
     @IsTest
+    static void aPieceIsRemovedByItsWithoutMethod() {
+        // Each printed form is what Jiff 1.0.0 prints for the string written without that
+        // piece in the first place.
+        JiffPieces full = JiffPieces.parse('2025-01-03T07:55+02[Africa/Cairo]');
+
+        JiffPieces noOffset = full.withoutOffset();
+        Assert.isNull(noOffset.offset());
+        Assert.isNull(noOffset.toNumericOffset());
+        Assert.areEqual('2025-01-03T07:55:00[Africa/Cairo]', noOffset.toString());
+        Assert.areEqual(JiffPieces.parse('2025-01-03T07:55[Africa/Cairo]'), noOffset);
+
+        JiffPieces noAnnotation = full.withoutTimeZoneAnnotation();
+        Assert.isNull(noAnnotation.timeZoneAnnotation());
+        Assert.isNull(noAnnotation.toTimeZone());
+        Assert.areEqual('2025-01-03T07:55:00+02:00', noAnnotation.toString());
+        Assert.areEqual(JiffPieces.parse('2025-01-03T07:55+02'), noAnnotation);
+
+        // An offset cannot follow a bare date, so midnight is printed while the offset stays.
+        JiffPieces noTime = full.withoutTime();
+        Assert.isNull(noTime.toTime());
+        Assert.areEqual('2025-01-03T00:00:00+02:00[Africa/Cairo]', noTime.toString());
+        Assert.areEqual('2025-01-03[Africa/Cairo]', noTime.withoutOffset().toString());
+        Assert.areEqual(JiffPieces.parse('2025-01-03[Africa/Cairo]'), noTime.withoutOffset());
+
+        Assert.areEqual(
+            JiffPieces.fromDate(JAN_3),
+            full.withoutOffset().withoutTime().withoutTimeZoneAnnotation()
+        );
+        // Taking away what is not there changes nothing, and the original is untouched.
+        Assert.areEqual(JiffPieces.fromDate(JAN_3), JiffPieces.fromDate(JAN_3).withoutOffset());
+        Assert.areEqual('2025-01-03T07:55:00+02:00[Africa/Cairo]', full.toString());
+    }
+
+    @IsTest
+    static void aNullOffsetOfEitherTypeRemovesTheOffset() {
+        // `withOffset(null)` does not compile, because Apex cannot choose between the two
+        // `withOffset` methods for a bare null. A null that has a type picks one, and both
+        // then do what `withoutOffset()` does.
+        JiffPieces full = JiffPieces.parse('2025-01-03T07:55+02[Africa/Cairo]');
+        JiffOffset noOffset = null;
+        JiffPiecesOffset noPiecesOffset = null;
+        Assert.areEqual(full.withoutOffset(), full.withOffset(noOffset));
+        Assert.areEqual(full.withoutOffset(), full.withOffset(noPiecesOffset));
+        Assert.areEqual('2025-01-03T07:55:00[Africa/Cairo]', full.withOffset(noOffset).toString());
+    }
+
+    @IsTest
+    static void anAnnotationWithAnIdOnlyThePlatformKnowsIsNotATimeZone() {
+        // The annotation parses, since any name does. Looking it up fails, as it does in Jiff
+        // 1.0.0, even though the runtimes this library is tested on each resolve these ids
+        // (and disagree about them: `BST` is +01:00 on one and +06:00 on another).
+        for (String name : new List<String>{ 'PST', 'BST', 'IST', 'AST', 'CST', 'ECT', 'UTC+5' }) {
+            JiffPieces pieces = JiffPieces.parse('2024-06-19T12:00[' + name + ']');
+            Assert.areEqual(name, pieces.timeZoneAnnotation().name());
+            try {
+                JiffTimeZone found = pieces.toTimeZone();
+                Assert.fail('expected ' + name + ' not to be found, but got ' + found);
+            } catch (JiffException e) {
+                Assert.areEqual(
+                    'failed to find time zone `' + name + '` in time zone database',
+                    e.getMessage()
+                );
+            }
+        }
+        // Names the time zone database does have, with their offsets on 2024-06-19T12:00Z.
+        JiffTimestamp june2024 = JiffTimestamp.fromSecond(1718798400L);
+        Map<String, String> expected = new Map<String, String>{
+            'America/New_York' => '-04',
+            'EST' => '-05',
+            'EST5EDT' => '-04',
+            'Etc/GMT+5' => '-05',
+            'GMT0' => '+00',
+            'Zulu' => '+00'
+        };
+        for (String name : expected.keySet()) {
+            JiffTimeZone tz = JiffPieces.parse('2024-06-19T12:00[' + name + ']').toTimeZone();
+            Assert.areEqual(name, tz.ianaName());
+            Assert.areEqual(expected.get(name), tz.toOffset(june2024).toString(), name);
+        }
+    }
+
+    @IsTest
     static void theDateAndTheSourceValuesAreRequired() {
         JiffPieces pieces = JiffPieces.fromDate(JAN_3);
         JiffDate noDate = null;

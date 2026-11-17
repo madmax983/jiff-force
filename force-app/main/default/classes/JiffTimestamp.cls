@@ -170,7 +170,8 @@ public class JiffTimestamp implements Comparable {
      *
      * The string must have a time and an offset (`Z` or numeric), since otherwise it does not
      * identify an instant. See `JiffTemporal.parseTimestamp` for everything that is accepted.
-     * Throws `JiffException` when the text is not a valid timestamp or is out of range.
+     * Throws `JiffException` when the text is not a valid timestamp or is out of range, which
+     * includes the instants less than a second before `MIN` that Jiff 1.0.0 lets through.
      *
      * Mirrors `impl FromStr for jiff::Timestamp`.
      */

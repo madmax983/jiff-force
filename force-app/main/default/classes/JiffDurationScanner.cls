@@ -219,19 +219,50 @@ public class JiffDurationScanner {
 
     /**
      * Wraps `text` in double quotes with the escapes `jiff::util::escape::Bytes` applies:
-     * control characters, quotes and backslashes are escaped, everything else is kept.
+     *
+     * - ASCII control characters, quotes and backslashes are escaped (`\t`, `\"`, `\x7f`).
+     * - A character outside ASCII that cannot be seen on its own is written as a Unicode
+     *   escape holding its code point: a no-break space, a zero width space, a combining
+     *   accent. `JiffUnicodeEscape` knows which characters those are and how they are written.
+     * - Every other character is kept as it is.
+     *
+     * A surrogate without its partner is not a character at all. Jiff would see it as three
+     * bytes that are not valid UTF-8, and it escapes such bytes one at a time (`\xed\xa0\x80`).
      */
     public static String quote(String text) {
         String out = '"';
-        for (Integer i = 0; i < text.length(); i++) {
-            Integer ch = text.charAt(i);
-            if (ch == 0) {
+        Integer textLength = text.length();
+        Integer i = 0;
+        while (i < textLength) {
+            Integer unit = text.charAt(i);
+            Integer width = 1;
+            if (unit == 0) {
                 out += '\\0';
-            } else if (ch < 128) {
-                out += escapeAscii(ch, false);
+            } else if (unit < 128) {
+                out += escapeAscii(unit, false);
+            } else if (unit < 55296 || unit > 57343) {
+                out += JiffUnicodeEscape.isEscaped(unit)
+                    ? JiffUnicodeEscape.escape(unit)
+                    : text.substring(i, i + 1);
+            } else if (
+                unit <= 56319 &&
+                i + 1 < textLength &&
+                text.charAt(i + 1) >= 56320 &&
+                text.charAt(i + 1) <= 57343
+            ) {
+                // A surrogate pair is one code point: 65536 plus ten bits from each half.
+                Integer codePoint = 65536 + (unit - 55296) * 1024 + (text.charAt(i + 1) - 56320);
+                width = 2;
+                out += JiffUnicodeEscape.isEscaped(codePoint)
+                    ? JiffUnicodeEscape.escape(codePoint)
+                    : text.substring(i, i + 2);
             } else {
-                out += text.substring(i, i + 1);
+                out +=
+                    escapeAscii(224 + unit / 4096, false) +
+                    escapeAscii(128 + Math.mod(unit / 64, 64), false) +
+                    escapeAscii(128 + Math.mod(unit, 64), false);
             }
+            i += width;
         }
         return out + '"';
     }

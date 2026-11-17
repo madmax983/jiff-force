@@ -159,4 +159,16 @@ private class JiffPiecesTimeZoneAnnotationTest {
             }
         }
     }
+
+    @IsTest
+    static void theCriticalFlagMustNotBeNull() {
+        JiffPiecesTimeZoneAnnotation cairo = JiffPiecesTimeZoneAnnotation.fromName('Africa/Cairo');
+        try {
+            cairo.withCritical(null);
+            Assert.fail('expected a null critical flag to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual('the critical flag must be true or false, not null', e.getMessage());
+        }
+        Assert.areEqual('[Africa/Cairo]', cairo.toString());
+    }
 }

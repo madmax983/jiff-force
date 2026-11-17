@@ -33,7 +33,7 @@
  * does not exist, is kept as it is. Setting one part never changes another.
  *
  * Only the date is required. Instances are immutable; the `with...` methods return a new
- * value.
+ * value. The `without...` methods take a part away again, which Jiff's `Pieces` cannot do.
  *
  * Mirrors `jiff::fmt::temporal::Pieces`.
  */
@@ -191,22 +191,37 @@ public class JiffPieces {
     }
 
     /**
-     * These pieces with the given time. Pass null to remove the time. Mirrors
-     * `Pieces::with_time`.
+     * These pieces with the given time. A null time removes it, as `withoutTime()` does.
+     * Mirrors `Pieces::with_time`.
      */
     public JiffPieces withTime(JiffTime value) {
         return new JiffPieces(dateValue, value, offsetValue, annotation);
     }
 
     /**
+     * These pieces without a time: `2025-01-03T07:55[Africa/Cairo]` becomes
+     * `2025-01-03[Africa/Cairo]`. If there is an offset, it stays, and the pieces print with
+     * a time of midnight.
+     *
+     * Jiff has no counterpart: its `Pieces` can gain a part but never lose one.
+     */
+    public JiffPieces withoutTime() {
+        return new JiffPieces(dateValue, null, offsetValue, annotation);
+    }
+
+    /**
      * These pieces with the given UTC offset, which may be `JiffPiecesOffset.ZULU` or a
-     * `-00:00`. Pass null to remove the offset.
+     * `-00:00`.
      *
      * This is the offset of the RFC 3339 part of the string, not the one inside a time zone
      * annotation; see `withTimeZoneOffset` for that. The two are not kept in step.
      *
      * A string such as `2025-01-03+11` is not valid, so pieces that have an offset but no
      * time are printed with a time of midnight.
+     *
+     * To remove the offset, call `withoutOffset()`. A variable that holds null removes it
+     * too, but `withOffset(null)` does not compile: with two methods of this name, Apex
+     * cannot tell which one a bare `null` is meant for.
      *
      * Mirrors `Pieces::with_offset`.
      */
@@ -216,10 +231,27 @@ public class JiffPieces {
 
     /**
      * These pieces with the given numeric UTC offset. An offset of zero is written `+00:00`.
+     * A null offset removes it, as `withoutOffset()` does; see the other `withOffset` for why
+     * that is the better way to ask.
+     *
      * Mirrors `Pieces::with_offset` for an `Offset`.
      */
     public JiffPieces withOffset(JiffOffset value) {
+        if (value == null) {
+            return withoutOffset();
+        }
         return withOffset(JiffPiecesOffset.fromOffset(value));
+    }
+
+    /**
+     * These pieces without a UTC offset: `2025-01-03T07:55+02:00[Africa/Cairo]` becomes
+     * `2025-01-03T07:55:00[Africa/Cairo]`. An offset inside a time zone annotation is not
+     * touched.
+     *
+     * Jiff has no counterpart: its `Pieces` can gain a part but never lose one.
+     */
+    public JiffPieces withoutOffset() {
+        return new JiffPieces(dateValue, timeValue, null, annotation);
     }
 
     /**
@@ -240,11 +272,21 @@ public class JiffPieces {
     }
 
     /**
-     * These pieces with the given time zone annotation. Pass null to remove the annotation.
-     * Mirrors `Pieces::with_time_zone_annotation`.
+     * These pieces with the given time zone annotation. A null annotation removes it, as
+     * `withoutTimeZoneAnnotation()` does. Mirrors `Pieces::with_time_zone_annotation`.
      */
     public JiffPieces withTimeZoneAnnotation(JiffPiecesTimeZoneAnnotation value) {
         return new JiffPieces(dateValue, timeValue, offsetValue, value);
+    }
+
+    /**
+     * These pieces without a time zone annotation: `2025-01-03T07:55+02:00[Africa/Cairo]`
+     * becomes `2025-01-03T07:55:00+02:00`.
+     *
+     * Jiff has no counterpart: its `Pieces` can gain a part but never lose one.
+     */
+    public JiffPieces withoutTimeZoneAnnotation() {
+        return new JiffPieces(dateValue, timeValue, offsetValue, null);
     }
 
     // ---- equality and text ----------------------------------------------

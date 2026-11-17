@@ -65,6 +65,9 @@ public class JiffTemporal {
      * them.
      */
     public static String printOffset(JiffOffset offset) {
+        if (offset == null) {
+            throw new JiffException('cannot print a null offset');
+        }
         Integer magnitude = Math.abs(offset.seconds());
         Integer hours = magnitude / 3600;
         Integer minutes = Math.mod(magnitude / 60, 60);
@@ -184,6 +187,12 @@ public class JiffTemporal {
      *   zoned datetime when the zone's rules should be applied.
      * - Other annotations, such as `[u-ca=gregory]`, are checked for syntax and ignored,
      *   unless they are marked critical (`[!u-ca=gregory]`), which is an error.
+     * - The instant must lie in `JiffTimestamp.MIN` to `JiffTimestamp.MAX`. This is stricter
+     *   than Jiff 1.0.0 in one place: an instant less than a second before the minimum, such
+     *   as `-009999-01-02T01:59:58.5Z`, is out of range here. Jiff checks only the whole
+     *   seconds, so an optimised build lets such a string through and returns a timestamp
+     *   that is below its own `Timestamp::MIN` (a build with debug assertions panics
+     *   instead). The port has no timestamps outside the range.
      *
      * Mirrors `jiff::fmt::temporal::DateTimeParser::parse_timestamp`.
      */
@@ -209,9 +218,12 @@ public class JiffTemporal {
      * such as `-05:00`, `+0530` or `+05:30:15`, which gives a fixed offset zone. This reads
      * what `printTimeZone` writes.
      *
-     * Jiff also accepts POSIX TZ strings here (`EST5EDT,M3.2.0,M11.1.0`). This port has no
-     * POSIX time zones, so such a string is looked up as a name and fails. Names are matched
-     * as `JiffTimeZone.get` matches them, which is case sensitive.
+     * Jiff also accepts POSIX TZ strings here (`EST5EDT,M3.2.0,M11.1.0`, `EST5`, `UTC+5`).
+     * This port has no POSIX time zones, so such a string is looked up as a name and fails.
+     * The one exception is `GMT0`, which is also a name in the time zone database and is
+     * found as that. Names are matched as `JiffTimeZone.get` matches them: case sensitively,
+     * and only when they are spelled the way the database spells its names, so the platform's
+     * own ids (`PST`, `GMT+05:00`) are not time zones here any more than they are in Jiff.
      *
      * Mirrors `jiff::fmt::temporal::DateTimeParser::parse_time_zone`.
      */

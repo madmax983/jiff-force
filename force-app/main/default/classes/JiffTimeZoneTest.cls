@@ -309,6 +309,125 @@ private class JiffTimeZoneTest {
     }
 
     @IsTest
+    static void idsOnlyThePlatformKnowsAreNotFound() {
+        // Each of these is resolved by at least one of the runtimes this library is tested
+        // on, and by none of them the same way: `BST` is British Summer Time on one and
+        // Bangladesh on another, and `UTC+5` is five hours ahead of UTC where a POSIX time
+        // zone of that spelling is five hours behind. Jiff 1.0.0 finds none of them.
+        for (
+            String name : new List<String>{
+                'PST',
+                'BST',
+                'IST',
+                'AST',
+                'CST',
+                'ECT',
+                'EDT',
+                'UTC+5',
+                'UTC-5',
+                'UT+5',
+                'UTC+05:00',
+                'Etc/GMT+05:00',
+                'localtime',
+                'posixrules',
+                'Local',
+                'posix/UTC',
+                'right/UTC',
+                'SystemV/AST4'
+            }
+        ) {
+            assertNotFound(name);
+        }
+    }
+
+    @IsTest
+    static void namesThatAreNotSpelledLikeDatabaseNamesAreNotFound() {
+        // A platform may overlook a doubled slash, a `.` component or padding, and answer
+        // with the zone it thinks was meant, under the name it was given.
+        for (
+            String name : new List<String>{
+                'Etc//GMT-14',
+                './UTC',
+                'Etc/./UTC',
+                'Etc/../UTC',
+                'America/New_York/',
+                '/America/New_York',
+                'Etc/',
+                'America/New York',
+                'America/New_York+5',
+                'Europe/London\t',
+                'America/New_York ',
+                'UTC ',
+                'UTC\u0085',
+                '　Europe/London',
+                'Asia/Kolkata ',
+                'America/New_York​'
+            }
+        ) {
+            assertNotFound(name);
+        }
+    }
+
+    @IsTest
+    static void theDatabasesOldSingleWordNamesAreFound() {
+        // Offsets on 2024-06-19T12:00:00Z, from Jiff 1.0.0.
+        JiffTimestamp june2024 = JiffTimestamp.fromSecond(1718798400L);
+        Map<String, String> expected = new Map<String, String>{
+            'EST' => '-05',
+            'EST5EDT' => '-04',
+            'PST8PDT' => '-07',
+            'Japan' => '+09',
+            'NZ' => '+12',
+            'NZ-CHAT' => '+12:45',
+            'W-SU' => '+03',
+            'GB-Eire' => '+01',
+            'Hongkong' => '+08',
+            'CET' => '+02',
+            'Zulu' => '+00',
+            'Universal' => '+00',
+            'Greenwich' => '+00',
+            'GMT0' => '+00'
+        };
+        for (String name : expected.keySet()) {
+            JiffTimeZone tz = JiffTimeZone.get(name);
+            Assert.areEqual(name, tz.ianaName());
+            Assert.areEqual(expected.get(name), tz.toOffset(june2024).toString(), name);
+        }
+    }
+
+    @IsTest
+    static void namesUnderEveryAreaOfTheDatabaseAreFound() {
+        // Offsets on 2024-06-19T12:00:00Z, from Jiff 1.0.0.
+        JiffTimestamp june2024 = JiffTimestamp.fromSecond(1718798400L);
+        Map<String, String> expected = new Map<String, String>{
+            'Africa/Cairo' => '+03',
+            'America/Argentina/Buenos_Aires' => '-03',
+            'America/Indiana/Indianapolis' => '-04',
+            'America/Port-au-Prince' => '-04',
+            'Antarctica/DumontDUrville' => '+10',
+            'Arctic/Longyearbyen' => '+02',
+            'Asia/Tokyo' => '+09',
+            'Atlantic/Azores' => '+00',
+            'Australia/Sydney' => '+10',
+            'Brazil/East' => '-03',
+            'Canada/Pacific' => '-07',
+            'Chile/Continental' => '-04',
+            'Etc/GMT+5' => '-05',
+            'Etc/GMT-14' => '+14',
+            'Europe/Paris' => '+02',
+            'Indian/Maldives' => '+05',
+            'Mexico/General' => '-06',
+            'Pacific/Auckland' => '+12',
+            'US/Eastern' => '-04'
+        };
+        for (String name : expected.keySet()) {
+            JiffTimeZone tz = JiffTimeZone.get(name);
+            Assert.areEqual(name, tz.ianaName());
+            Assert.areEqual(expected.get(name), tz.toOffset(june2024).toString(), name);
+        }
+    }
+
+    @IsTest
     static void namesAreCaseSensitiveUnlikeInJiff() {
         // Jiff resolves `america/NEW_YORK` to `America/New_York`. The platform cannot.
         assertNotFound('america/NEW_YORK');

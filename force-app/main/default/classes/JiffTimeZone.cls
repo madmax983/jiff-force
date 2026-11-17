@@ -33,8 +33,15 @@
  *   (the platform may know nothing before about 1900).
  * - **Names are case sensitive.** Jiff accepts `america/new_york`; here only `UTC` and
  *   `Etc/Unknown` are matched without regard to case, because the platform offers no way to
- *   find the canonical spelling. Java style custom ids such as `GMT+05:00` are rejected (use
- *   `fixed`), and with them the database's rarely used `GMT+0` and `GMT-0` aliases.
+ *   find the canonical spelling.
+ * - **Only names the database could contain are looked up.** The platform knows ids of its
+ *   own that are not in the database, and which ones depends on the runtime: abbreviations
+ *   (`PST`, `BST`, `IST`), custom offsets (`GMT+05:00`, or `UTC+5`, which reads the sign the
+ *   opposite way from a POSIX time zone) and names it merely tolerates (`Etc//UTC`, a name
+ *   padded with a no-break space). Jiff knows none of them, so none is passed on: a name must
+ *   be `Area/Location` under one of the database's areas (`America/New_York`, `Etc/GMT+5`),
+ *   or one of its old single word names (`EST`, `Japan`, `PST8PDT`). Of those, the rarely
+ *   used `GMT+0` and `GMT-0` are rejected too. Use `fixed` for a zone at a set offset.
  * - **Aliases are not resolved.** `Asia/Calcutta` and `Asia/Kolkata` behave identically but
  *   are not `equals`, and Jiff's `primary_iana_name`, `is_primary` and `location` are not
  *   available.
@@ -91,6 +98,74 @@ public class JiffTimeZone {
     private static final Long SCAN_HORIZON = 4102444800L;
     // 366 days: long enough to contain a transition of any yearly rule.
     private static final Long SCAN_YEAR = 31622400L;
+
+    // The first component of every `Area/Location` name in the time zone database. The list is
+    // closed in practice: new zones are added under these areas.
+    private static final Set<String> AREAS = new Set<String>{
+        'Africa',
+        'America',
+        'Antarctica',
+        'Arctic',
+        'Asia',
+        'Atlantic',
+        'Australia',
+        'Brazil',
+        'Canada',
+        'Chile',
+        'Etc',
+        'Europe',
+        'Indian',
+        'Mexico',
+        'Pacific',
+        'US'
+    };
+    // The names in the database that have no area. They are kept for old software and no more
+    // are added. `GMT+0` and `GMT-0` are left out on purpose: see the class notes. `UTC` is
+    // matched before this list is consulted.
+    private static final Set<String> SINGLE_NAMES = new Set<String>{
+        'CET',
+        'CST6CDT',
+        'Cuba',
+        'EET',
+        'EST',
+        'EST5EDT',
+        'Egypt',
+        'Eire',
+        'Factory',
+        'GB',
+        'GB-Eire',
+        'GMT',
+        'GMT0',
+        'Greenwich',
+        'HST',
+        'Hongkong',
+        'Iceland',
+        'Iran',
+        'Israel',
+        'Jamaica',
+        'Japan',
+        'Kwajalein',
+        'Libya',
+        'MET',
+        'MST',
+        'MST7MDT',
+        'NZ',
+        'NZ-CHAT',
+        'Navajo',
+        'PRC',
+        'PST8PDT',
+        'Poland',
+        'Portugal',
+        'ROC',
+        'ROK',
+        'Singapore',
+        'Turkey',
+        'UCT',
+        'Universal',
+        'W-SU',
+        'WET',
+        'Zulu'
+    };
 
     /** The UTC time zone: offset zero, always. Its IANA name is `UTC`. */
     public static final JiffTimeZone UTC = new JiffTimeZone(KIND_UTC, JiffOffset.UTC, 'UTC', null);
@@ -182,12 +257,9 @@ public class JiffTimeZone {
         if (ianaName.equalsIgnoreCase('Etc/Unknown')) {
             return UNKNOWN;
         }
-        // The platform parses `GMT+05:00` style ids as fixed offsets. They are not IANA names.
-        if (
-            ianaName.startsWith('GMT+') ||
-            ianaName.startsWith('GMT-') ||
-            !ianaName.equals(ianaName.trim())
-        ) {
+        // The platform accepts ids that are not in the time zone database: abbreviations,
+        // `GMT+05:00` style offsets, names with stray characters. Jiff does not.
+        if (!isDatabaseName(ianaName)) {
             return null;
         }
         // The platform answers an unrecognised id with its GMT zone instead of an error. A
@@ -197,6 +269,46 @@ public class JiffTimeZone {
             return null;
         }
         return new JiffTimeZone(KIND_NAMED, null, ianaName, zone);
+    }
+
+    /**
+     * Whether `name` is spelled the way the time zone database spells its names: one of the
+     * single word names, or an area followed by one or more `/` separated components made of
+     * ASCII letters, digits, `_`, `-` and `+`. Whether such a zone exists is for the platform
+     * to say; this only keeps the platform's own inventions away from it.
+     */
+    private static Boolean isDatabaseName(String name) {
+        Integer slash = name.indexOf('/');
+        if (slash < 0) {
+            return SINGLE_NAMES.contains(name);
+        }
+        if (!AREAS.contains(name.substring(0, slash))) {
+            return false;
+        }
+        Integer componentStart = slash + 1;
+        for (Integer i = componentStart; i < name.length(); i++) {
+            Integer ch = name.charAt(i);
+            if (ch == 47) {
+                if (i == componentStart) {
+                    return false;
+                }
+                componentStart = i + 1;
+            } else if (
+                !(ch >= 97 &&
+                ch <= 122) &&
+                !(ch >= 65 &&
+                ch <= 90) &&
+                !(ch >= 48 &&
+                ch <= 57) &&
+                ch != 95 &&
+                ch != 45 &&
+                ch != 43
+            ) {
+                return false;
+            }
+        }
+        // The last component must not be empty either.
+        return componentStart < name.length();
     }
 
     // ---- identity -------------------------------------------------------

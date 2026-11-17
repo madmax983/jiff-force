@@ -86,6 +86,9 @@ public class JiffPiecesTimeZoneAnnotation {
      * one. The port offers it so that such a string can also be built.
      */
     public JiffPiecesTimeZoneAnnotation withCritical(Boolean yes) {
+        if (yes == null) {
+            throw new JiffException('the critical flag must be true or false, not null');
+        }
         return new JiffPiecesTimeZoneAnnotation(nameValue, offsetValue, yes);
     }
 

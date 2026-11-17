@@ -167,11 +167,95 @@ private class JiffDurationScannerTest {
         Assert.areEqual('""', JiffDurationScanner.quote(''));
         Assert.areEqual('"\\"\\\'\\\\\\\\x"', JiffDurationScanner.quote('"\'\\\\x'));
         Assert.areEqual('"\\0"', JiffDurationScanner.quote(chars(new List<Integer>{ 0 })));
-        // Control characters are escaped; everything outside ASCII is kept as it is.
+        // Control characters are escaped; characters outside ASCII that can be seen are kept.
         String mixed = chars(new List<Integer>{ 1, 127, 181, 55357, 56832, 32, 9, 10, 13 });
         Assert.areEqual(
             '"\\x01\\x7f' + chars(new List<Integer>{ 181, 55357, 56832 }) + ' \\t\\n\\r"',
             JiffDurationScanner.quote(mixed)
+        );
+    }
+
+    /** Each row is `text => quoted`, as Jiff 1.0.0 echoes that text when it is left over. */
+    private static void assertQuotes(List<String> rows) {
+        for (String row : rows) {
+            Integer at = row.indexOf(' => ');
+            Assert.areEqual(
+                row.substring(at + 4),
+                JiffDurationScanner.quote(row.substring(0, at)),
+                row
+            );
+        }
+    }
+
+    @IsTest
+    static void invisibleCharactersOutsideAsciiAreQuotedAsUnicodeEscapes() {
+        // A no-break space pasted after a date looks like an ordinary space when it is echoed
+        // raw, which hides what is wrong with the input.
+        assertQuotes(
+            new List<String>{
+                '  => "\\u{a0}"',
+                'é => "e\\u{301}"',
+                '​ => "\\u{200b}"',
+                '­ => "\\u{ad}"',
+                '\u0085 => "\\u{85}"',
+                '  => "\\u{2028}"',
+                '  => "\\u{2029}"',
+                '　 => "\\u{3000}"',
+                '﻿ => "\\u{feff}"',
+                ' => "\\u{e000}"',
+                '͸ => "\\u{378}"',
+                '\u007F\u0080\u009F¡ => "\\x7f\\u{80}\\u{9f}¡"',
+                '�￿ => "�\\u{ffff}"'
+            }
+        );
+        // The same echo, as a duration parser reports it.
+        try {
+            JiffTemporal.parseSpan('P1D ');
+            Assert.fail('expected a no-break space after a duration to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'parsed value \'P1D\', but unparsed input "\\u{a0}" remains ' +
+                '(expected no unparsed input)',
+                e.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    static void aSurrogatePairIsQuotedAsOneCodePoint() {
+        assertQuotes(
+            new List<String>{
+                // U+E0100, a variation selector, and U+10FFFF, which is not a character.
+                '󠄀 => "\\u{e0100}"',
+                '􏿿 => "\\u{10ffff}"',
+                // An emoji, a skin tone modifier and a regional indicator can all be seen.
+                'é€😀 => "é€😀"',
+                '🏻 => "🏻"',
+                '🇦⃣️ => "🇦\\u{20e3}\\u{fe0f}"'
+            }
+        );
+    }
+
+    @IsTest
+    static void aLoneSurrogateIsQuotedAsItsThreeInvalidBytes() {
+        // Jiff, given the bytes ED A0 80 or ED B0 80, which is how a lone surrogate would be
+        // written in UTF-8, escapes each byte on its own.
+        Assert.areEqual(
+            '"\\xed\\xa0\\x80"',
+            JiffDurationScanner.quote(chars(new List<Integer>{ 55296 }))
+        );
+        Assert.areEqual(
+            '"\\xed\\xb0\\x80x"',
+            JiffDurationScanner.quote(chars(new List<Integer>{ 56320, 120 }))
+        );
+        // A high surrogate at the very end, and one followed by something else.
+        Assert.areEqual(
+            '"x\\xed\\xa0\\x80"',
+            JiffDurationScanner.quote(chars(new List<Integer>{ 120, 55296 }))
+        );
+        Assert.areEqual(
+            '"\\xed\\xa0\\x80x"',
+            JiffDurationScanner.quote(chars(new List<Integer>{ 55296, 120 }))
         );
     }
 

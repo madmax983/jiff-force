@@ -41,6 +41,10 @@ Delegate to the platform, and derive everything else from `getOffset`:
   is lower by at most two hours.
 - **Unknown zone names**: the platform silently returns GMT, so `JiffTimeZone.get` detects that
   and throws. Names are case sensitive, as the platform cannot canonicalise them.
+- **Platform-only ids**: the platform also resolves ids that are not in the database, and
+  runtimes disagree about them (`BST`, `UTC+5`, `Etc//UTC`, a name padded with a no-break
+  space). Only a name spelled like a database name is passed to the platform: `Area/Location`
+  under one of the database's sixteen areas, or one of its legacy single word names.
 
 `JiffTimeZone.userTimeZone()` (the running user's zone) takes the place of Jiff's system zone.
 

@@ -20,11 +20,14 @@
  *   seconds is an error.
  * - `colon(OPTIONAL)`: see `JiffTemporalOffsetColon`.
  *
- * Instances are immutable; each option method returns a new parser.
+ * Instances are immutable; each option method returns a new parser. A null option, and a
+ * null scanner, are rejected with a `JiffException`.
  *
  * Mirrors `jiff::fmt::offset::Parser`.
  */
 public class JiffTemporalOffsetParser {
+    private static final String OPTION_IS_NULL = 'an option of the UTC offset parser must not be null';
+
     private final Boolean allowZulu;
     private final Boolean needMinute;
     private final Boolean needSecond;
@@ -55,6 +58,9 @@ public class JiffTemporalOffsetParser {
 
     /** Whether `Z` and `z` are accepted. When they are not, finding one is an error. */
     public JiffTemporalOffsetParser zulu(Boolean yes) {
+        if (yes == null) {
+            throw new JiffException(OPTION_IS_NULL);
+        }
         return new JiffTemporalOffsetParser(
             yes,
             needMinute,
@@ -67,6 +73,9 @@ public class JiffTemporalOffsetParser {
 
     /** Whether the minutes component is required. */
     public JiffTemporalOffsetParser requireMinute(Boolean yes) {
+        if (yes == null) {
+            throw new JiffException(OPTION_IS_NULL);
+        }
         return new JiffTemporalOffsetParser(
             allowZulu,
             yes,
@@ -82,6 +91,9 @@ public class JiffTemporalOffsetParser {
      * `subminute` is off.
      */
     public JiffTemporalOffsetParser requireSecond(Boolean yes) {
+        if (yes == null) {
+            throw new JiffException(OPTION_IS_NULL);
+        }
         return new JiffTemporalOffsetParser(
             allowZulu,
             needMinute,
@@ -97,6 +109,9 @@ public class JiffTemporalOffsetParser {
      * ignored.
      */
     public JiffTemporalOffsetParser subminute(Boolean yes) {
+        if (yes == null) {
+            throw new JiffException(OPTION_IS_NULL);
+        }
         return new JiffTemporalOffsetParser(
             allowZulu,
             needMinute,
@@ -112,6 +127,9 @@ public class JiffTemporalOffsetParser {
      * the nearest second, since a `JiffOffset` has whole seconds.
      */
     public JiffTemporalOffsetParser subsecond(Boolean yes) {
+        if (yes == null) {
+            throw new JiffException(OPTION_IS_NULL);
+        }
         return new JiffTemporalOffsetParser(
             allowZulu,
             needMinute,
@@ -122,8 +140,11 @@ public class JiffTemporalOffsetParser {
         );
     }
 
-    /** How colons between the components are treated. */
+    /** How colons between the components are treated. See `JiffTemporalOffsetColon`. */
     public JiffTemporalOffsetParser colon(JiffTemporalOffsetColon rule) {
+        if (rule == null) {
+            throw new JiffException(OPTION_IS_NULL);
+        }
         return new JiffTemporalOffsetParser(
             allowZulu,
             needMinute,
@@ -139,6 +160,9 @@ public class JiffTemporalOffsetParser {
      * Throws `JiffException` when there is no valid offset there.
      */
     public JiffTemporalParsedOffset parse(JiffDurationScanner scanner) {
+        if (scanner == null) {
+            throw new JiffException('cannot parse a UTC offset without input');
+        }
         if (scanner.isDone()) {
             throw new JiffException('expected UTC offset, but found end of input');
         }
@@ -164,6 +188,9 @@ public class JiffTemporalOffsetParser {
      * or `-`.
      */
     public JiffTemporalParsedOffset parseOptional(JiffDurationScanner scanner) {
+        if (scanner == null) {
+            throw new JiffException('cannot parse a UTC offset without input');
+        }
         Integer first = scanner.peek();
         if (first != 90 && first != 122 && first != 43 && first != 45) {
             return null;

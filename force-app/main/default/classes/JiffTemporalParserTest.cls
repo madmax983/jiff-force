@@ -7,6 +7,11 @@
  * (`DateTimeParser::parse_date`, `parse_datetime`, `parse_timestamp`, `parse_time`,
  * `parse_time_zone`, `Pieces::parse` and `ISOWeekDate::from_str`) and printing the parsed value
  * or the error message. Nothing here was computed by the port.
+ *
+ * A few tests cover inputs where the port differs from Jiff on purpose, and say so: POSIX time
+ * zone strings, which the port does not have, and instants just below the smallest timestamp,
+ * which Jiff lets through. Their expected error is the one Jiff gives for the nearest input
+ * that it rejects itself.
  */
 @IsTest
 private class JiffTemporalParserTest {
@@ -807,6 +812,174 @@ private class JiffTemporalParserTest {
                 '2024-06-19T15:22:45[!u-ca= => expected the start of an RFC 9557 annotation value, but found end of input instead'
             }
         );
+    }
+
+    // ---- review regressions -----------------------------------------------
+
+    @IsTest
+    static void leftoverCharactersThatCannotBeSeenAreEchoedAsUnicodeEscapes() {
+        // Jiff writes leftover input through Rust's `char::escape_debug`: a no-break space, a
+        // zero width space or a combining accent shows up as its code point, while an accented
+        // letter or an emoji is kept.
+        assertErrors(
+            'date',
+            new List<String>{
+                '2024-06-19\u00A0 => parsed value \'2024-06-19\', but unparsed input "\\u{a0}" remains (expected no unparsed input)',
+                '2024-06-19e\u0301 => parsed value \'2024-06-19\', but unparsed input "e\\u{301}" remains (expected no unparsed input)',
+                '2024-06-19\u200B => parsed value \'2024-06-19\', but unparsed input "\\u{200b}" remains (expected no unparsed input)',
+                '2024-06-19\u00AD => parsed value \'2024-06-19\', but unparsed input "\\u{ad}" remains (expected no unparsed input)',
+                '2024-06-19\u0085 => parsed value \'2024-06-19\', but unparsed input "\\u{85}" remains (expected no unparsed input)',
+                '2024-06-19\u2028 => parsed value \'2024-06-19\', but unparsed input "\\u{2028}" remains (expected no unparsed input)',
+                '2024-06-19\u3000 => parsed value \'2024-06-19\', but unparsed input "\\u{3000}" remains (expected no unparsed input)',
+                '2024-06-19\uFEFF => parsed value \'2024-06-19\', but unparsed input "\\u{feff}" remains (expected no unparsed input)',
+                '2024-06-19\uDB40\uDD00 => parsed value \'2024-06-19\', but unparsed input "\\u{e0100}" remains (expected no unparsed input)',
+                '2024-06-19\u00E9\u20AC\uD83D\uDE00 => parsed value \'2024-06-19\', but unparsed input "\u00E9\u20AC\uD83D\uDE00" remains (expected no unparsed input)',
+                '2024-06-19\uD83C\uDDE6\u20E3\uFE0F => parsed value \'2024-06-19\', but unparsed input "\uD83C\uDDE6\\u{20e3}\\u{fe0f}" remains (expected no unparsed input)'
+            }
+        );
+        assertErrors(
+            'datetime',
+            new List<String>{
+                '2024-06-19T15:22:45\u00A0 => parsed value \'2024-06-19T15:22:45\', but unparsed input "\\u{a0}" remains (expected no unparsed input)',
+                '2024-06-19 15:22\u2009 => parsed value \'2024-06-19T15:22:00\', but unparsed input "\\u{2009}" remains (expected no unparsed input)'
+            }
+        );
+        assertErrors(
+            'timestamp',
+            new List<String>{
+                '2024-06-19T15:22:45Z\u3000 => parsed value \'2024-06-19T15:22:45Z\', but unparsed input "\\u{3000}" remains (expected no unparsed input)',
+                '2024-06-19T15:22:45+02:00\u200B => parsed value \'2024-06-19T15:22:45+02:00\', but unparsed input "\\u{200b}" remains (expected no unparsed input)'
+            }
+        );
+        assertErrors(
+            'time',
+            new List<String>{
+                '15:22\u2028 => parsed value \'15:22:00\', but unparsed input "\\u{2028}" remains (expected no unparsed input)',
+                'T15:22:45.5\u00A0 => parsed value \'15:22:45.5\', but unparsed input "\\u{a0}" remains (expected no unparsed input)'
+            }
+        );
+        assertErrors(
+            'week',
+            new List<String>{
+                '2024-W10-6\u00A0 => parsed value \'2024-W10-6\', but unparsed input "\\u{a0}" remains (expected no unparsed input)',
+                '2024W106\u0301 => parsed value \'2024-W10-6\', but unparsed input "\\u{301}" remains (expected no unparsed input)'
+            }
+        );
+        assertErrors(
+            'zone',
+            new List<String>{
+                'America/New_York \u00A0 => parsed value \'America/New_York \\u{a0}\', but unparsed input " \\u{a0}" remains (expected no unparsed input)',
+                'America/New_York\u00A0 x => parsed value \'America/New_York\\u{a0} x\', but unparsed input " x" remains (expected no unparsed input)'
+            }
+        );
+        assertErrors(
+            'pieces',
+            new List<String>{
+                '2024-06-19T15:22:45+02:00[Africa/Cairo]\u200B => parsed value \'2024-06-19T15:22:45+02:00[Africa/Cairo]\', but unparsed input "\\u{200b}" remains (expected no unparsed input)',
+                '2024-06-19[Africa/Cairo]\u00A0 => parsed value \'2024-06-19[Africa/Cairo]\', but unparsed input "\\u{a0}" remains (expected no unparsed input)'
+            }
+        );
+    }
+
+    @IsTest
+    static void aZoneNamePaddedWithUnicodeWhitespaceIsNotFound() {
+        // Only ASCII whitespace ends a time zone name. Other whitespace is part of the name,
+        // and no zone has such a name, even where the platform would overlook the padding.
+        assertErrors(
+            'zone',
+            new List<String>{
+                'UTC\u00A0 => parsed apparent IANA time zone identifier, but the tzdb lookup failed: failed to find time zone `UTC\u00A0` in time zone database',
+                'America/New_York\u00A0 => parsed apparent IANA time zone identifier, but the tzdb lookup failed: failed to find time zone `America/New_York\u00A0` in time zone database',
+                'UTC\u0085 => parsed apparent IANA time zone identifier, but the tzdb lookup failed: failed to find time zone `UTC\u0085` in time zone database',
+                '\u3000Europe/London => parsed apparent IANA time zone identifier, but the tzdb lookup failed: failed to find time zone `\u3000Europe/London` in time zone database',
+                'Asia/Kolkata\u2028 => parsed apparent IANA time zone identifier, but the tzdb lookup failed: failed to find time zone `Asia/Kolkata\u2028` in time zone database',
+                'America/New_York\u200B => parsed apparent IANA time zone identifier, but the tzdb lookup failed: failed to find time zone `America/New_York\u200B` in time zone database'
+            }
+        );
+    }
+
+    @IsTest
+    static void idsOnlyThePlatformKnowsAreNotTimeZones() {
+        // Abbreviations and other ids that a platform's `TimeZone.getTimeZone` resolves but
+        // that are not in the time zone database, and so not in Jiff.
+        assertErrors(
+            'zone',
+            new List<String>{
+                'PST => parsed apparent IANA time zone identifier, but the tzdb lookup failed: failed to find time zone `PST` in time zone database',
+                'BST => parsed apparent IANA time zone identifier, but the tzdb lookup failed: failed to find time zone `BST` in time zone database',
+                'Etc//GMT-14 => parsed apparent IANA time zone identifier, but the tzdb lookup failed: failed to find time zone `Etc//GMT-14` in time zone database',
+                'posix/UTC => parsed apparent IANA time zone identifier, but the tzdb lookup failed: failed to find time zone `posix/UTC` in time zone database',
+                'UT+5 => parsed apparent IANA time zone identifier, but the tzdb lookup failed: failed to find time zone `UT+5` in time zone database',
+                'localtime => parsed apparent IANA time zone identifier, but the tzdb lookup failed: failed to find time zone `localtime` in time zone database'
+            }
+        );
+        // The old single word names of the database are time zones, digits and all.
+        assertParses('zone', new List<String>{ 'EST => EST', 'EST5EDT => EST5EDT' });
+        JiffTimestamp june2024 = JiffTimestamp.fromSecond(1718798400L);
+        Assert.areEqual('-05', JiffTemporal.parseTimeZone('EST').toOffset(june2024).toString());
+        Assert.areEqual('-04', JiffTemporal.parseTimeZone('EST5EDT').toOffset(june2024).toString());
+    }
+
+    @IsTest
+    static void posixOffsetsAreNotReadTheWayThePlatformReadsThem() {
+        // Jiff reads each of these as a POSIX time zone, where the number counts hours west
+        // of Greenwich: `UTC+5` is five hours behind UTC. A platform that knows such ids
+        // reads them the other way round, as five hours ahead. The port has no POSIX time
+        // zones, and must fail rather than hand back a zone with the opposite sign.
+        for (String text : new List<String>{ 'UTC+5', 'UTC-5', 'GMT+5', 'EST5' }) {
+            try {
+                JiffTimeZone parsed = JiffTemporal.parseTimeZone(text);
+                Assert.fail('expected ' + text + ' to be rejected, but parsed ' + parsed);
+            } catch (JiffException e) {
+                Assert.areEqual(
+                    'parsed apparent IANA time zone identifier, but the tzdb lookup failed: ' +
+                        'failed to find time zone `' +
+                        text +
+                        '` in time zone database',
+                    e.getMessage()
+                );
+            }
+        }
+        // `GMT0` is a POSIX time zone to Jiff as well, at offset zero and without a name.
+        // It is also a name in the database, and that is what the port finds.
+        JiffTimeZone gmt0 = JiffTemporal.parseTimeZone('GMT0');
+        Assert.areEqual('GMT0', gmt0.ianaName());
+        Assert.areEqual('+00', gmt0.toOffset(JiffTimestamp.fromSecond(1718798400L)).toString());
+    }
+
+    @IsTest
+    static void timestampsLessThanASecondBelowTheMinimumAreRejectedUnlikeInJiff() {
+        // Jiff 1.0.0 checks only the whole seconds of the instant. Built with optimisations it
+        // accepts each of these and returns a timestamp below `Timestamp::MIN` (second
+        // -377705023201 with a negative fraction, which `Timestamp::new` refuses); built with
+        // debug assertions it panics. The port keeps every timestamp in range, and reports
+        // these the way both report `-009999-01-02T01:59:58Z`.
+        String overflowed =
+            ' to timestamp overflowed: parameter \'Unix timestamp seconds\' is not in the ' +
+            'required range of -377705023201..=253402207200';
+        assertErrors(
+            'timestamp',
+            new List<String>{
+                '-009999-01-02T01:59:58.999999999Z => failed to convert civil datetime to timestamp with offset +00: converting datetime with time zone offset `+00`' +
+                overflowed,
+                '-009999-01-02T01:59:58.5Z => failed to convert civil datetime to timestamp with offset +00: converting datetime with time zone offset `+00`' +
+                overflowed,
+                '-009999-01-02T01:59:58.000000001-00:00 => failed to convert civil datetime to timestamp with offset +00: converting datetime with time zone offset `+00`' +
+                overflowed,
+                '-009999-01-02T02:00:58.5+00:01 => failed to convert civil datetime to timestamp with offset +00:01: converting datetime with time zone offset `+00:01`' +
+                overflowed
+            }
+        );
+        // The minimum itself, and the first nanosecond after it, parse as they do in Jiff.
+        assertParses(
+            'timestamp',
+            new List<String>{
+                '-009999-01-02T01:59:59Z => -009999-01-02T01:59:59Z',
+                '-009999-01-02T01:59:59.000000001Z => -009999-01-02T01:59:59.000000001Z',
+                '-009999-01-02T02:00:00+00:00:01 => -009999-01-02T01:59:59Z'
+            }
+        );
+        Assert.areEqual(JiffTimestamp.MIN, JiffTimestamp.parse('-009999-01-02T01:59:59Z'));
     }
 
     // ---- null -------------------------------------------------------------

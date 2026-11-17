@@ -23,6 +23,9 @@
  * A printer is an immutable value: each option method returns a new printer, so one can be
  * built once, kept in a static field and shared.
  *
+ * Every method throws `JiffException` when it is given null, except `precision`, where null
+ * has the meaning described above.
+ *
  * Printing a zoned datetime is out of this class's hands until `JiffZonedDateTime` exists.
  *
  * Mirrors `jiff::fmt::temporal::DateTimePrinter`. Jiff's `print_*` methods write to a buffer;
@@ -60,6 +63,9 @@ public class JiffTemporalPrinter {
      * `2024-06-15T07:00:00Z`. Mirrors `DateTimePrinter::lowercase`.
      */
     public JiffTemporalPrinter lowercase(Boolean yes) {
+        if (yes == null) {
+            throw new JiffException('the lowercase option must be true or false, not null');
+        }
         return new JiffTemporalPrinter(yes, separatorChar, precisionDigits);
     }
 
@@ -110,6 +116,7 @@ public class JiffTemporalPrinter {
      * Mirrors `DateTimePrinter::date_to_string`.
      */
     public String dateToString(JiffDate value) {
+        require(value, 'a null date');
         return year(value.year()) +
             '-' +
             JiffMath.pad(value.month(), 2) +
@@ -123,6 +130,7 @@ public class JiffTemporalPrinter {
      * Mirrors `DateTimePrinter::time_to_string`.
      */
     public String timeToString(JiffTime value) {
+        require(value, 'a null time');
         String out =
             JiffMath.pad(value.hour(), 2) +
             ':' +
@@ -141,6 +149,7 @@ public class JiffTemporalPrinter {
      * Mirrors `DateTimePrinter::datetime_to_string`.
      */
     public String dateTimeToString(JiffDateTime value) {
+        require(value, 'a null datetime');
         return dateToString(value.toDate()) + separatorText() + timeToString(value.toTime());
     }
 
@@ -151,6 +160,7 @@ public class JiffTemporalPrinter {
      * Mirrors `DateTimePrinter::timestamp_to_string`.
      */
     public String timestampToString(JiffTimestamp value) {
+        require(value, 'a null timestamp');
         return dateTimeToString(JiffOffset.UTC.toDateTime(value)) + zulu();
     }
 
@@ -164,6 +174,8 @@ public class JiffTemporalPrinter {
      * Mirrors `DateTimePrinter::timestamp_with_offset_to_string`.
      */
     public String timestampWithOffsetToString(JiffTimestamp value, JiffOffset offset) {
+        require(value, 'a null timestamp');
+        require(offset, 'a null offset');
         return dateTimeToString(offset.toDateTime(value)) + JiffTemporal.printOffset(offset);
     }
 
@@ -174,6 +186,7 @@ public class JiffTemporalPrinter {
      * Mirrors `DateTimePrinter::print_iso_week_date`.
      */
     public String isoWeekDateToString(JiffIsoWeekDate value) {
+        require(value, 'a null ISO week date');
         return year(value.year()) +
             (lowercaseLetters ? '-w' : '-W') +
             JiffMath.pad(value.week(), 2) +
@@ -190,6 +203,7 @@ public class JiffTemporalPrinter {
      * time zone that has no name; every time zone of this port can be printed.
      */
     public String timeZoneToString(JiffTimeZone zone) {
+        require(zone, 'a null time zone');
         if (zone.ianaName() != null) {
             return zone.ianaName();
         }
@@ -220,6 +234,7 @@ public class JiffTemporalPrinter {
      * Mirrors `DateTimePrinter::pieces_to_string`.
      */
     public String piecesToString(JiffPieces pieces) {
+        require(pieces, 'null datetime pieces');
         JiffPiecesOffset offset = pieces.offset();
         String out;
         if (pieces.toTime() != null || offset != null) {
@@ -236,6 +251,13 @@ public class JiffTemporalPrinter {
     }
 
     // ---- helpers --------------------------------------------------------
+
+    /** Throws when there is nothing to print. `what` says what was expected: `a null date`. */
+    private static void require(Object value, String what) {
+        if (value == null) {
+            throw new JiffException('cannot print ' + what);
+        }
+    }
 
     /** A year as four digits, or as `-00` and four digits when it is negative. */
     private static String year(Integer value) {
