@@ -41,24 +41,27 @@ new JiffSpan().years(1).months(2).days(3).hours(4).toString();     // P1Y2M3DT4H
 
 ## Status
 
-This is a port in progress, tracking Jiff 1.0.0.
+This is a port in progress, tracking Jiff 1.0.0. It has not yet been compiled on a Salesforce org.
 
 | Area | State |
 | --- | --- |
 | Units, rounding modes, rounding options | Done |
 | `JiffSignedDuration` | Done |
 | `JiffSpan` data model, ISO 8601 printing and parsing | Done |
-| `JiffDate`, `JiffTime`: arithmetic, differences, rounding, builders, series | Done |
+| `JiffDate`, `JiffTime`, `JiffDateTime`: arithmetic, differences, rounding, builders, series | Done |
 | `JiffIsoWeekDate`, `JiffWeekdays` | Done |
 | `JiffTimestamp`, `JiffOffset` | Done |
 | `JiffTimeZone` (platform backed), gap and fold resolution, transitions | Done |
 | Friendly duration format (`2h 30m`, `1 year, 2 months ago`) | Done |
-| `JiffDateTime` arithmetic, differences, rounding | In progress |
-| ISO 8601 / RFC 9557 datetime parsing | In progress |
-| `JiffZonedDateTime` | Planned |
-| Span arithmetic, comparison, totals and rounding relative to a date | Planned |
-| `strftime`/`strptime`, RFC 2822 | Planned |
-| Converting Salesforce record fields to and from Jiff types | Partly done (dates, times, timestamps); zoned and a record helper planned |
+| ISO 8601 / RFC 9557 parsing for dates, times, datetimes and timestamps | Done |
+| `JiffZonedDateTime` | Done, not yet independently verified |
+| Converting platform `Date`, `Time`, `Datetime` values to and from Jiff types | Done, with a known locale issue |
+| Span arithmetic, comparison, totals and rounding relative to a date | Not started |
+| `until`/`since` with rounding options, `JiffZonedDateTime.parse` | Not started |
+| `strftime`/`strptime`, RFC 2822 | Not started |
+| A record helper for reading and writing SObject fields | Not started |
+
+Work is paused. [docs/HANDOFF.md](docs/HANDOFF.md) has the detailed state and the remaining plan.
 
 ## How it maps to Jiff
 
