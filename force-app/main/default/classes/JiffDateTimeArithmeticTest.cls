@@ -312,7 +312,7 @@ private class JiffDateTimeArithmeticTest {
 
     @IsTest
     static void addAndSubtractSpansMatchJiff() {
-        // Produced by Jiff 1.0.0. Each row is
+        // Produced by Jiff 1.0.0, and replayed against it by `npm run oracle:check`. Each row is
         //   start | span | checked_add | checked_sub | saturating_add | saturating_sub
         // with the start as `year,month,day,hour,minute,second,nanosecond` and the span as
         // its ten units from years down to nanoseconds. A result is the datetime as Jiff
@@ -490,7 +490,7 @@ private class JiffDateTimeArithmeticTest {
 
     @IsTest
     static void addAndSubtractDurationsMatchJiff() {
-        // Produced by Jiff 1.0.0. Each row is
+        // Produced by Jiff 1.0.0, and replayed against it by `npm run oracle:check`. Each row is
         //   start | seconds,nanoseconds | checked_add | checked_sub | saturating_add | saturating_sub
         // in the notation of `addAndSubtractSpansMatchJiff`.
         List<String> rows = new List<String>{
@@ -783,8 +783,51 @@ private class JiffDateTimeArithmeticTest {
     }
 
     @IsTest
+    static void untilInNanosecondsReachesExactlyTheLargestSpan() {
+        // A span holds at most 9,223,372,036,854,775,807 nanoseconds, which is how far
+        // `fits` is from `start`. `tooFar` is one nanosecond later.
+        JiffDateTime start = atHour(2000, 1, 1, 0);
+        JiffDateTime fits = civil(2292, 4, 10, 23, 47, 16, 854775807);
+        JiffDateTime tooFar = civil(2292, 4, 10, 23, 47, 16, 854775808);
+        Assert.areEqual(
+            new JiffSpan().nanoseconds(9223372036854775807L),
+            start.until(fits, JiffUnit.NANOSECOND)
+        );
+        Assert.areEqual(
+            new JiffSpan().nanoseconds(-9223372036854775807L),
+            fits.until(start, JiffUnit.NANOSECOND)
+        );
+        Assert.areEqual(
+            new JiffSpan().nanoseconds(-9223372036854775807L),
+            start.since(fits, JiffUnit.NANOSECOND)
+        );
+        Assert.areEqual(
+            new JiffSpan().nanoseconds(9223372036854775807L),
+            fits.since(start, JiffUnit.NANOSECOND)
+        );
+        String outOfRange = 'ERR:' + ERROR_TEXT.get('nanos');
+        Assert.areEqual(outOfRange, tryUntil(start, tooFar, JiffUnit.NANOSECOND));
+        Assert.areEqual(outOfRange, tryUntil(tooFar, start, JiffUnit.NANOSECOND));
+        try {
+            JiffSpan unexpected = start.since(tooFar, JiffUnit.NANOSECOND);
+            Assert.fail('expected the difference not to fit, but got ' + unexpected);
+        } catch (JiffException e) {
+            Assert.areEqual(ERROR_TEXT.get('nanos'), e.getMessage());
+        }
+        // One unit up there is room to spare.
+        Assert.areEqual(
+            new JiffSpan().microseconds(9223372036854775L).nanoseconds(808),
+            start.until(tooFar, JiffUnit.MICROSECOND)
+        );
+        Assert.areEqual(
+            new JiffSpan().microseconds(-9223372036854775L).nanoseconds(-808),
+            tooFar.until(start, JiffUnit.MICROSECOND)
+        );
+    }
+
+    @IsTest
     static void untilAndDurationUntilMatchJiff() {
-        // Produced by Jiff 1.0.0. Each row is
+        // Produced by Jiff 1.0.0, and replayed against it by `npm run oracle:check`. Each row is
         //   dt1 | dt2 | dt1.duration_until(dt2) | largest unit | dt1.until((unit, dt2))
         // with the duration as `seconds,nanoseconds`, the unit as its position from
         // nanoseconds (0) to years (9), and the span as its ten units from years down to
@@ -909,6 +952,12 @@ private class JiffDateTimeArithmeticTest {
             '1732,2,22,0,0,0,0|2024,6,19,0,0,0,0|9224841600,0|0|ERR:nanos',
             '1732,2,22,0,0,0,0|2024,6,20,0,0,0,0|9224928000,0|0|ERR:nanos',
             '1732,2,22,0,0,0,0|2024,6,20,0,0,0,0|9224928000,0|1|0,0,0,0,0,0,0,0,9224928000000000,0',
+            '2000,1,1,0,0,0,0|2292,4,10,23,47,16,854775807|9223372036,854775807|0|0,0,0,0,0,0,0,0,0,9223372036854775807',
+            '2292,4,10,23,47,16,854775807|2000,1,1,0,0,0,0|-9223372036,-854775807|0|0,0,0,0,0,0,0,0,0,-9223372036854775807',
+            '2000,1,1,0,0,0,0|2292,4,10,23,47,16,854775808|9223372036,854775808|0|ERR:nanos',
+            '2292,4,10,23,47,16,854775808|2000,1,1,0,0,0,0|-9223372036,-854775808|0|ERR:nanos',
+            '2000,1,1,0,0,0,0|2292,4,10,23,47,16,854775808|9223372036,854775808|1|0,0,0,0,0,0,0,0,9223372036854775,808',
+            '2292,4,10,23,47,16,854775808|2000,1,1,0,0,0,0|-9223372036,-854775808|1|0,0,0,0,0,0,0,0,-9223372036854775,-808',
             '2038,9,22,0,0,0,0|143,8,26,16,30,49,500000000|-59802737350,-500000000|0|ERR:nanos',
             '2067,8,31,23,59,59,999999999|2067,6,29,17,5,54,122505639|-5468045,-877494360|1|0,0,0,0,0,0,0,0,-5468045877494,-360',
             '2073,10,12,0,0,0,0|2044,12,11,12,38,30,500000000|-909919289,-500000000|2|0,0,0,0,0,0,0,-909919289500,0,0',
@@ -1011,6 +1060,27 @@ private class JiffDateTimeArithmeticTest {
         JiffDateTime later = atHour(2019, 1, 31, 21);
         Assert.areEqual(new JiffSpan().days(4542).hours(22).minutes(30), later.since(earlier));
         Assert.areEqual(new JiffSpan().days(-4542).hours(-22).minutes(-30), earlier.since(later));
+    }
+
+    @IsTest
+    static void sinceUsesDaysAsTheLargestUnitWhenNoneIsGiven() {
+        JiffDateTime earlier = civil(2006, 8, 24, 22, 30, 0, 0);
+        JiffDateTime later = atHour(2019, 1, 31, 21);
+        // A missing unit means days, as it does for `until`.
+        Assert.areEqual(later.since(earlier), later.since(earlier, null));
+        Assert.areEqual(
+            new JiffSpan().days(4542).hours(22).minutes(30),
+            later.since(earlier, null)
+        );
+        Assert.areEqual(
+            new JiffSpan().days(-4542).hours(-22).minutes(-30),
+            earlier.since(later, null)
+        );
+        Assert.areEqual(later.since(earlier, JiffUnit.DAY), later.since(earlier, null));
+        Assert.areEqual(
+            '-P2913114DT8H37M14.999999999S',
+            civil(2024, 2, 29, 15, 22, 45, 0).since(JiffDateTime.MAX, null).toString()
+        );
     }
 
     @IsTest

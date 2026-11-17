@@ -7,10 +7,15 @@
 //!
 //! Usage: `cargo run --manifest-path oracle/Cargo.toml` from the repository
 //! root, or `npm run oracle`, which also formats the result.
+//!
+//! Some hand written tests carry their vectors inline instead. With `--check`
+//! (`npm run oracle:check`) nothing is generated; those rows are replayed
+//! against Jiff and every expected value that differs is reported.
 
 mod civil;
 mod duration;
 mod emit;
+mod replay;
 mod rng;
 
 use std::path::PathBuf;
@@ -23,7 +28,19 @@ use crate::rng::Rng;
 const SEED: u64 = 0x4A49_4646_2D46_4F52;
 
 fn main() -> Result<()> {
-    let classes_dir = classes_dir()?;
+    let mut check = false;
+    let mut classes_arg = None;
+    for arg in std::env::args_os().skip(1) {
+        if arg == "--check" {
+            check = true;
+        } else {
+            classes_arg = Some(PathBuf::from(arg));
+        }
+    }
+    let classes_dir = classes_dir(classes_arg)?;
+    if check {
+        return replay::check(&classes_dir);
+    }
     let mut rng = Rng::new(SEED);
     emit::write_data_class(
         &classes_dir,
@@ -46,13 +63,12 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// The Apex classes directory: the first argument, or the default location
-/// relative to this crate.
-fn classes_dir() -> Result<PathBuf> {
-    let dir = std::env::args_os().nth(1).map_or_else(
-        || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../force-app/main/default/classes"),
-        PathBuf::from,
-    );
+/// The Apex classes directory: the one given on the command line, or the
+/// default location relative to this crate.
+fn classes_dir(given: Option<PathBuf>) -> Result<PathBuf> {
+    let dir = given.unwrap_or_else(|| {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../force-app/main/default/classes")
+    });
     let dir = dir
         .canonicalize()
         .with_context(|| format!("locating {}", dir.display()))?;

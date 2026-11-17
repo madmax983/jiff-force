@@ -40,6 +40,19 @@ private class JiffDateTimeTest {
     }
 
     @IsTest
+    static void zeroIsMidnightOnTheFirstDayOfYearZero() {
+        // `DateTime::ZERO`, which is also Jiff's `DateTime::default()`.
+        Assert.areEqual('0000-01-01T00:00:00', JiffDateTime.ZERO.toString());
+        Assert.areEqual(JiffDate.ZERO.at(0, 0, 0, 0), JiffDateTime.ZERO);
+        Assert.areEqual(JiffDate.ZERO, JiffDateTime.ZERO.toDate());
+        Assert.areEqual(JiffTime.MIN, JiffDateTime.ZERO.toTime());
+        Assert.isTrue(JiffDateTime.MIN.isBefore(JiffDateTime.ZERO));
+        Assert.isTrue(JiffDateTime.MAX.isAfter(JiffDateTime.ZERO));
+        // `DateTime::from(date)` is the date at midnight.
+        Assert.areEqual(JiffDateTime.ZERO, JiffDate.ZERO.toDateTime(JiffTime.midnight()));
+    }
+
+    @IsTest
     static void buildsFromADateAndATime() {
         JiffDateTime dt = JiffDateTime.fromParts(
             JiffDate.newInstance(2024, 2, 29),

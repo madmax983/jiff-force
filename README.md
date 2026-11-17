@@ -143,8 +143,9 @@ npm run test:aer -- -f JiffDateTest
   Apex runtime (install it separately). Its free tier runs up to 100 test methods at a time; set
   `AER_LICENSE_KEY` to run the whole suite.
 - `npm run fmt` formats with Salesforce's Apex parser; `npm run test:coverage` enforces the
-  coverage gate; `npm run oracle` regenerates the golden vectors from the real Jiff crate
-  (requires Rust).
+  coverage gate; `npm run oracle` regenerates the golden vectors from the real Jiff crate and
+  `npm run oracle:check` replays the vector tables kept inline in tests against it (both
+  require Rust).
 
 Why there are two runners, and what each one catches, is explained in
 [ADR 2](docs/adr/0002-local-test-runners.md). Conventions for contributors (the Apex subset the

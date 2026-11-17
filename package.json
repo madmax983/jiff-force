@@ -13,6 +13,7 @@
         "fmt": "prettier --write \"force-app/**/*.cls\" \"tools/**/*.mjs\"",
         "fmt:check": "prettier --check \"force-app/**/*.cls\" \"tools/**/*.mjs\"",
         "oracle": "cargo run --quiet --manifest-path oracle/Cargo.toml && node tools/gen-meta.mjs && prettier --write \"force-app/**/JiffOracle*Data.cls\"",
+        "oracle:check": "cargo run --quiet --manifest-path oracle/Cargo.toml -- --check",
         "meta": "node tools/gen-meta.mjs",
         "meta:check": "node tools/gen-meta.mjs --check"
     },

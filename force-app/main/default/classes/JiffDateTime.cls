@@ -46,6 +46,11 @@ public class JiffDateTime implements Comparable {
     public static final JiffDateTime MIN = new JiffDateTime(JiffDate.MIN, JiffTime.MIN);
     /** The latest supported datetime, `9999-12-31T23:59:59.999999999`. */
     public static final JiffDateTime MAX = new JiffDateTime(JiffDate.MAX, JiffTime.MAX);
+    /**
+     * Midnight on January 1st of year zero, `0000-01-01T00:00:00`. This is also what Jiff's
+     * `DateTime::default()` returns.
+     */
+    public static final JiffDateTime ZERO = new JiffDateTime(JiffDate.ZERO, JiffTime.MIN);
 
     private final JiffDate dateValue;
     private final JiffTime timeValue;
@@ -73,7 +78,13 @@ public class JiffDateTime implements Comparable {
         );
     }
 
-    /** Combines a date and a time. */
+    /**
+     * Combines a date and a time.
+     *
+     * Jiff also converts a `Date` straight into the `DateTime` at midnight on that date
+     * (`DateTime::from(date)`). Here that is `date.toDateTime(JiffTime.midnight())`, or
+     * `JiffDateTime.fromParts(date, JiffTime.midnight())`.
+     */
     public static JiffDateTime fromParts(JiffDate datePart, JiffTime timePart) {
         if (datePart == null || timePart == null) {
             throw new JiffException('a datetime needs both a date and a time');
@@ -567,8 +578,8 @@ public class JiffDateTime implements Comparable {
     }
 
     /**
-     * The span from `other` until this datetime, using units up to `largest`. It is negative
-     * when `other` is later.
+     * The span from `other` until this datetime, using units up to `largest` (null means
+     * `DAY`). It is negative when `other` is later.
      *
      * This is `until(other, largest)` with the sign flipped: months and years are still
      * counted starting from this datetime, going back to `other`. That is not always the same

@@ -229,7 +229,7 @@ private class JiffDateTimeRoundTest {
 
     @IsTest
     static void roundMatchesJiff() {
-        // Produced by Jiff 1.0.0. Each row is
+        // Produced by Jiff 1.0.0, and replayed against it by `npm run oracle:check`. Each row is
         //   datetime | smallest unit | increment | mode | datetime.round(...)
         // with the datetime as `year,month,day,hour,minute,second,nanosecond`, the unit as
         // its position from nanoseconds (0) to days (6) and the mode as its position in

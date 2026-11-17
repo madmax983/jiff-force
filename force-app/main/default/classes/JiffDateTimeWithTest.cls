@@ -26,6 +26,49 @@ private class JiffDateTimeWithTest {
         }
     }
 
+    /** Calls the setter named `field` with a null, as code holding an unset Integer would. */
+    private static JiffDateTimeWith setToNull(JiffDateTimeWith builder, String field) {
+        Integer missing = null;
+        if (field.equals('year')) {
+            return builder.year(missing);
+        }
+        if (field.equals('eraYear')) {
+            return builder.eraYear(missing, JiffEra.CE);
+        }
+        if (field.equals('month')) {
+            return builder.month(missing);
+        }
+        if (field.equals('day')) {
+            return builder.day(missing);
+        }
+        if (field.equals('dayOfYear')) {
+            return builder.dayOfYear(missing);
+        }
+        if (field.equals('dayOfYearNoLeap')) {
+            return builder.dayOfYearNoLeap(missing);
+        }
+        if (field.equals('hour')) {
+            return builder.hour(missing);
+        }
+        if (field.equals('minute')) {
+            return builder.minute(missing);
+        }
+        if (field.equals('second')) {
+            return builder.second(missing);
+        }
+        if (field.equals('millisecond')) {
+            return builder.millisecond(missing);
+        }
+        if (field.equals('microsecond')) {
+            return builder.microsecond(missing);
+        }
+        if (field.equals('nanosecond')) {
+            return builder.nanosecond(missing);
+        }
+        Assert.areEqual('subsecNanosecond', field);
+        return builder.subsecNanosecond(missing);
+    }
+
     // ---- the builder as a whole ------------------------------------------
 
     @IsTest
@@ -107,6 +150,58 @@ private class JiffDateTimeWithTest {
             Assert.fail('expected a missing datetime to be rejected');
         } catch (JiffException e) {
             Assert.areEqual('the datetime to build from must not be null', e.getMessage());
+        }
+    }
+
+    @IsTest
+    static void everyFieldSetterRejectsNull() {
+        // Jiff's setters take plain integers, so there is nothing to mirror: a null is a
+        // mistake in the caller, and it is reported instead of being read as "keep the
+        // original value".
+        JiffDateTime dt = civil(2024, 3, 31, 13, 13, 13, 13);
+        List<String> fields = new List<String>{
+            'year',
+            'eraYear',
+            'month',
+            'day',
+            'dayOfYear',
+            'dayOfYearNoLeap',
+            'hour',
+            'minute',
+            'second',
+            'millisecond',
+            'microsecond',
+            'nanosecond',
+            'subsecNanosecond'
+        };
+        for (String field : fields) {
+            try {
+                JiffDateTimeWith unexpected = setToNull(dt.with(), field);
+                Assert.fail('expected ' + field + '(null) to be rejected');
+            } catch (JiffException e) {
+                Assert.areEqual(field + ' must not be null', e.getMessage());
+            }
+        }
+    }
+
+    @IsTest
+    static void aNullDoesNotEraseAnEarlierValue() {
+        JiffDateTime dt = civil(2024, 3, 31, 13, 13, 13, 13);
+        JiffDateTimeWith fiveOClock = dt.with().hour(5);
+        try {
+            JiffDateTimeWith unexpected = setToNull(fiveOClock, 'hour');
+            Assert.fail('expected hour(null) after hour(5) to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual('hour must not be null', e.getMessage());
+        }
+        // The builder it was called on still holds the hour it was given.
+        Assert.areEqual(civil(2024, 3, 31, 5, 13, 13, 13), fiveOClock.build());
+        // A null whole fraction is not a way around the rule against mixing it with a part.
+        try {
+            JiffDateTimeWith unexpected = setToNull(dt.with().millisecond(1), 'subsecNanosecond');
+            Assert.fail('expected subsecNanosecond(null) to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual('subsecNanosecond must not be null', e.getMessage());
         }
     }
 

@@ -11,6 +11,7 @@
  * Nothing is validated until `build()`, so fields can be set in any order. Changing the month
  * of `2024-10-31T00:00:00` to November on its own would be invalid (there is no November
  * 31st), but it is fine as an intermediate step on the way to `2024-11-30T00:00:00`.
+ * The one exception is a null value, which every setter rejects at once.
  *
  * The date fields follow the rules of `JiffDateWith` and the time fields those of
  * `JiffTimeWith`. In short:
@@ -43,6 +44,10 @@ public class JiffDateTimeWith {
     private JiffDateTimeWith(JiffDateWith dateWith, JiffTimeWith timeWith) {
         this.dateWith = dateWith;
         this.timeWith = timeWith;
+    }
+
+    private static JiffException missing(String field) {
+        return new JiffException(field + ' must not be null');
     }
 
     private static JiffDate dateOf(JiffDateTime original) {
@@ -88,6 +93,9 @@ public class JiffDateTimeWith {
      * year: `2024-02-29T01:30:00` cannot simply move to 2023.
      */
     public JiffDateTimeWith year(Integer year) {
+        if (year == null) {
+            throw missing('year');
+        }
         return new JiffDateTimeWith(dateWith.year(year), timeWith);
     }
 
@@ -100,6 +108,9 @@ public class JiffDateTimeWith {
      * year `-508`. `build()` throws if the year is outside the range for its era.
      */
     public JiffDateTimeWith eraYear(Integer year, JiffEra era) {
+        if (year == null) {
+            throw missing('eraYear');
+        }
         return new JiffDateTimeWith(dateWith.eraYear(year, era), timeWith);
     }
 
@@ -110,6 +121,9 @@ public class JiffDateTimeWith {
      * month: `2024-10-31T00:00:00` cannot simply move to November.
      */
     public JiffDateTimeWith month(Integer month) {
+        if (month == null) {
+            throw missing('month');
+        }
         return new JiffDateTimeWith(dateWith.month(month), timeWith);
     }
 
@@ -120,6 +134,9 @@ public class JiffDateTimeWith {
      * `build()` throws if the resulting year and month have no such day.
      */
     public JiffDateTimeWith day(Integer day) {
+        if (day == null) {
+            throw missing('day');
+        }
         return new JiffDateTimeWith(dateWith.day(day), timeWith);
     }
 
@@ -132,6 +149,9 @@ public class JiffDateTimeWith {
      * the year is not a leap year.
      */
     public JiffDateTimeWith dayOfYear(Integer day) {
+        if (day == null) {
+            throw missing('dayOfYear');
+        }
         return new JiffDateTimeWith(dateWith.dayOfYear(day), timeWith);
     }
 
@@ -144,21 +164,33 @@ public class JiffDateTimeWith {
      * if the value is out of range.
      */
     public JiffDateTimeWith dayOfYearNoLeap(Integer day) {
+        if (day == null) {
+            throw missing('dayOfYearNoLeap');
+        }
         return new JiffDateTimeWith(dateWith.dayOfYearNoLeap(day), timeWith);
     }
 
     /** Sets the hour. `build()` throws unless it is in `0..23`. */
     public JiffDateTimeWith hour(Integer hour) {
+        if (hour == null) {
+            throw missing('hour');
+        }
         return new JiffDateTimeWith(dateWith, timeWith.hour(hour));
     }
 
     /** Sets the minute. `build()` throws unless it is in `0..59`. */
     public JiffDateTimeWith minute(Integer minute) {
+        if (minute == null) {
+            throw missing('minute');
+        }
         return new JiffDateTimeWith(dateWith, timeWith.minute(minute));
     }
 
     /** Sets the second. `build()` throws unless it is in `0..59`. */
     public JiffDateTimeWith second(Integer second) {
+        if (second == null) {
+            throw missing('second');
+        }
         return new JiffDateTimeWith(dateWith, timeWith.second(second));
     }
 
@@ -168,6 +200,9 @@ public class JiffDateTimeWith {
      * `subsecNanosecond` is also set.
      */
     public JiffDateTimeWith millisecond(Integer millisecond) {
+        if (millisecond == null) {
+            throw missing('millisecond');
+        }
         return new JiffDateTimeWith(dateWith, timeWith.millisecond(millisecond));
     }
 
@@ -177,6 +212,9 @@ public class JiffDateTimeWith {
      * `subsecNanosecond` is also set.
      */
     public JiffDateTimeWith microsecond(Integer microsecond) {
+        if (microsecond == null) {
+            throw missing('microsecond');
+        }
         return new JiffDateTimeWith(dateWith, timeWith.microsecond(microsecond));
     }
 
@@ -186,6 +224,9 @@ public class JiffDateTimeWith {
      * `subsecNanosecond` is also set.
      */
     public JiffDateTimeWith nanosecond(Integer nanosecond) {
+        if (nanosecond == null) {
+            throw missing('nanosecond');
+        }
         return new JiffDateTimeWith(dateWith, timeWith.nanosecond(nanosecond));
     }
 
@@ -194,6 +235,9 @@ public class JiffDateTimeWith {
      * `0..999,999,999`, or if any of `millisecond`, `microsecond` or `nanosecond` is also set.
      */
     public JiffDateTimeWith subsecNanosecond(Integer subsecNanosecond) {
+        if (subsecNanosecond == null) {
+            throw missing('subsecNanosecond');
+        }
         return new JiffDateTimeWith(dateWith, timeWith.subsecNanosecond(subsecNanosecond));
     }
 

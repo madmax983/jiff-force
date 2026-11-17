@@ -10,6 +10,7 @@
  * Nothing is validated until `build()`, so fields can be set in any order. Changing the month
  * of `2024-10-31` to November on its own would be invalid (there is no November 31st), but it
  * is fine as an intermediate step on the way to `2024-11-30`.
+ * The one exception is a null value, which every setter rejects at once.
  *
  * Fields that describe the same thing override each other, and the last one set wins:
  *
@@ -79,6 +80,9 @@ public class JiffDateWith {
      * year: `2024-02-29` cannot simply move to 2023.
      */
     public JiffDateWith year(Integer year) {
+        if (year == null) {
+            throw missing('year');
+        }
         return new JiffDateWith(
             original,
             YEAR_PLAIN,
@@ -100,6 +104,9 @@ public class JiffDateWith {
      * year `-508`. `build()` throws if the year is outside the range for its era.
      */
     public JiffDateWith eraYear(Integer year, JiffEra era) {
+        if (year == null) {
+            throw missing('eraYear');
+        }
         if (era == null) {
             throw new JiffException('era must not be null');
         }
@@ -122,6 +129,9 @@ public class JiffDateWith {
      * month: `2024-10-31` cannot simply move to November.
      */
     public JiffDateWith month(Integer month) {
+        if (month == null) {
+            throw missing('month');
+        }
         return new JiffDateWith(
             original,
             yearKind,
@@ -141,6 +151,9 @@ public class JiffDateWith {
      * `build()` throws if the resulting year and month have no such day.
      */
     public JiffDateWith day(Integer day) {
+        if (day == null) {
+            throw missing('day');
+        }
         return withDay(DAY_OF_MONTH, day);
     }
 
@@ -153,6 +166,9 @@ public class JiffDateWith {
      * the year is not a leap year.
      */
     public JiffDateWith dayOfYear(Integer day) {
+        if (day == null) {
+            throw missing('dayOfYear');
+        }
         return withDay(DAY_OF_YEAR, day);
     }
 
@@ -165,7 +181,14 @@ public class JiffDateWith {
      * if the value is out of range.
      */
     public JiffDateWith dayOfYearNoLeap(Integer day) {
+        if (day == null) {
+            throw missing('dayOfYearNoLeap');
+        }
         return withDay(DAY_OF_YEAR_NO_LEAP, day);
+    }
+
+    private static JiffException missing(String field) {
+        return new JiffException(field + ' must not be null');
     }
 
     private JiffDateWith withDay(Integer kind, Integer day) {

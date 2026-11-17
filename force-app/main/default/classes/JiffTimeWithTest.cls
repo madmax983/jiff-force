@@ -25,6 +25,31 @@ private class JiffTimeWithTest {
         return 'cannot set both `JiffTimeWith.' + field + '` and `JiffTimeWith.subsecNanosecond`';
     }
 
+    /** Calls the setter named `field` with a null, as code holding an unset Integer would. */
+    private static JiffTimeWith setToNull(JiffTimeWith builder, String field) {
+        Integer missing = null;
+        if (field.equals('hour')) {
+            return builder.hour(missing);
+        }
+        if (field.equals('minute')) {
+            return builder.minute(missing);
+        }
+        if (field.equals('second')) {
+            return builder.second(missing);
+        }
+        if (field.equals('millisecond')) {
+            return builder.millisecond(missing);
+        }
+        if (field.equals('microsecond')) {
+            return builder.microsecond(missing);
+        }
+        if (field.equals('nanosecond')) {
+            return builder.nanosecond(missing);
+        }
+        Assert.areEqual('subsecNanosecond', field);
+        return builder.subsecNanosecond(missing);
+    }
+
     @IsTest
     static void setsSeveralFieldsAtOnce() {
         JiffTime t1 = t(0, 0, 24, 0);
@@ -190,5 +215,51 @@ private class JiffTimeWithTest {
             original.with().hour(24).millisecond(1).subsecNanosecond(0),
             conflict('millisecond')
         );
+    }
+
+    @IsTest
+    static void everySetterRejectsNull() {
+        // Jiff's setters take plain integers, so there is nothing to mirror: a null is a
+        // mistake in the caller, and it is reported instead of being read as "keep the
+        // original value".
+        JiffTime original = t(13, 13, 13, 13);
+        List<String> fields = new List<String>{
+            'hour',
+            'minute',
+            'second',
+            'millisecond',
+            'microsecond',
+            'nanosecond',
+            'subsecNanosecond'
+        };
+        for (String field : fields) {
+            try {
+                JiffTimeWith unexpected = setToNull(original.with(), field);
+                Assert.fail('expected ' + field + '(null) to be rejected');
+            } catch (JiffException e) {
+                Assert.areEqual(field + ' must not be null', e.getMessage());
+            }
+        }
+    }
+
+    @IsTest
+    static void aNullDoesNotEraseAnEarlierValue() {
+        JiffTime original = t(13, 13, 13, 13);
+        JiffTimeWith fiveOClock = original.with().hour(5);
+        try {
+            JiffTimeWith unexpected = setToNull(fiveOClock, 'hour');
+            Assert.fail('expected hour(null) after hour(5) to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual('hour must not be null', e.getMessage());
+        }
+        // The builder it was called on still holds the hour it was given.
+        Assert.areEqual(t(5, 13, 13, 13), fiveOClock.build());
+        // A null whole fraction is not a way around the rule against mixing it with a part.
+        try {
+            JiffTimeWith unexpected = setToNull(original.with().millisecond(1), 'subsecNanosecond');
+            Assert.fail('expected subsecNanosecond(null) to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual('subsecNanosecond must not be null', e.getMessage());
+        }
     }
 }

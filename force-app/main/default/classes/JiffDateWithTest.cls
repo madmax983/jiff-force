@@ -13,6 +13,28 @@ private class JiffDateWithTest {
         }
     }
 
+    /** Calls the setter named `field` with a null, as code holding an unset Integer would. */
+    private static JiffDateWith setToNull(JiffDateWith builder, String field) {
+        Integer missing = null;
+        if (field.equals('year')) {
+            return builder.year(missing);
+        }
+        if (field.equals('eraYear')) {
+            return builder.eraYear(missing, JiffEra.CE);
+        }
+        if (field.equals('month')) {
+            return builder.month(missing);
+        }
+        if (field.equals('day')) {
+            return builder.day(missing);
+        }
+        if (field.equals('dayOfYear')) {
+            return builder.dayOfYear(missing);
+        }
+        Assert.areEqual('dayOfYearNoLeap', field);
+        return builder.dayOfYearNoLeap(missing);
+    }
+
     @IsTest
     static void buildingWithNothingSetReturnsTheOriginalDate() {
         JiffDate original = ymd(2024, 2, 29);
@@ -343,6 +365,30 @@ private class JiffDateWithTest {
             Assert.fail('expected a missing date to be rejected');
         } catch (JiffException e) {
             Assert.areEqual('the date to build from must not be null', e.getMessage());
+        }
+    }
+
+    @IsTest
+    static void everySetterRejectsNull() {
+        // Jiff's setters take plain integers, so there is nothing to mirror: a null is a
+        // mistake in the caller, and it is reported by the setter with the library's own
+        // exception.
+        JiffDate original = ymd(2024, 3, 31);
+        List<String> fields = new List<String>{
+            'year',
+            'eraYear',
+            'month',
+            'day',
+            'dayOfYear',
+            'dayOfYearNoLeap'
+        };
+        for (String field : fields) {
+            try {
+                JiffDateWith unexpected = setToNull(original.with(), field);
+                Assert.fail('expected ' + field + '(null) to be rejected');
+            } catch (JiffException e) {
+                Assert.areEqual(field + ' must not be null', e.getMessage());
+            }
         }
     }
 }
