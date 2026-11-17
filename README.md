@@ -19,8 +19,17 @@ brings the model to the platform:
   duration format (`2h 30m`), `strftime`/`strptime`, and RFC 2822.
 
 ```apex
-// A civil date knows its calendar.
-JiffDate.newInstance(2024, 2, 29).weekday();                       // THURSDAY
+// Add a month to the last day of January: the day is clamped, not overflowed.
+JiffDate.newInstance(2024, 1, 31).add(new JiffSpan().months(1));   // 2024-02-29
+
+// What instant is 2:30 on the morning the clocks go forward in New York? There isn't one.
+JiffTimeZone.get('America/New_York')
+    .toAmbiguousTimestamp(JiffDateTime.newInstance(2024, 3, 10, 2, 30, 0, 0))
+    .isAmbiguous();                                                // true (a gap)
+
+// Durations parse from ISO 8601 or a friendly format, and print either way.
+JiffSpan.parse('1 year, 2 months, 3 days').toString();             // P1Y2M3D
+JiffSpan.parse('PT90M').toFriendly();                              // 90m
 
 // A duration is exact elapsed time. Rounding has modes and increments.
 JiffSignedDuration elapsed = JiffSignedDuration.fromMillis(5430500);
@@ -38,14 +47,18 @@ This is a port in progress, tracking Jiff 1.0.0.
 | --- | --- |
 | Units, rounding modes, rounding options | Done |
 | `JiffSignedDuration` | Done |
-| `JiffSpan` data model, ISO 8601 printing | Done |
-| `JiffDate`, `JiffTime`, `JiffDateTime`: construction, validation, ordering, printing | Done |
-| Civil arithmetic, differences, rounding, ISO week dates | In progress |
-| `JiffTimestamp`, `JiffOffset`, `JiffTimeZone` | In progress |
-| Duration parsing and the friendly duration format | In progress |
+| `JiffSpan` data model, ISO 8601 printing and parsing | Done |
+| `JiffDate`, `JiffTime`: arithmetic, differences, rounding, builders, series | Done |
+| `JiffIsoWeekDate`, `JiffWeekdays` | Done |
+| `JiffTimestamp`, `JiffOffset` | Done |
+| `JiffTimeZone` (platform backed), gap and fold resolution, transitions | Done |
+| Friendly duration format (`2h 30m`, `1 year, 2 months ago`) | Done |
+| `JiffDateTime` arithmetic, differences, rounding | In progress |
+| ISO 8601 / RFC 9557 datetime parsing | In progress |
 | `JiffZonedDateTime` | Planned |
 | Span arithmetic, comparison, totals and rounding relative to a date | Planned |
-| ISO 8601 / RFC 9557 datetime parsing, `strftime`/`strptime`, RFC 2822 | Planned |
+| `strftime`/`strptime`, RFC 2822 | Planned |
+| Converting Salesforce record fields to and from Jiff types | Partly done (dates, times, timestamps); zoned and a record helper planned |
 
 ## How it maps to Jiff
 
