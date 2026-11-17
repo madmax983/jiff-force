@@ -36,6 +36,49 @@ public class JiffTemporal {
     }
 
     /**
+     * Formats a UTC offset the way RFC 3339 requires inside a timestamp: a sign, two digit
+     * hours, a colon and two digit minutes, for example `-05:00` or `+05:30`.
+     *
+     * RFC 3339 has no room for seconds, so an offset with seconds is rounded to the nearest
+     * minute (`-00:44:30` prints as `-00:45`). `JiffOffset.toString()` is the form that keeps
+     * them.
+     */
+    public static String printOffset(JiffOffset offset) {
+        Integer magnitude = Math.abs(offset.seconds());
+        Integer hours = magnitude / 3600;
+        Integer minutes = Math.mod(magnitude / 60, 60);
+        if (Math.mod(magnitude, 60) >= 30) {
+            minutes++;
+            if (minutes == 60) {
+                hours++;
+                minutes = 0;
+                // The largest offset is 25:59:59, which must not round up to 26:00.
+                if (hours > 25) {
+                    hours = 25;
+                    minutes = 59;
+                }
+            }
+        }
+        return (offset.isNegative() ? '-' : '+') +
+            JiffMath.pad(hours, 2) +
+            ':' +
+            JiffMath.pad(minutes, 2);
+    }
+
+    /** Formats an instant as an RFC 3339 timestamp in UTC, for example `2024-06-19T19:22:45Z`. */
+    public static String printTimestamp(JiffTimestamp value) {
+        return printDateTime(JiffOffset.UTC.toDateTime(value)) + 'Z';
+    }
+
+    /**
+     * Formats an instant as an RFC 3339 timestamp at the given offset, for example
+     * `2024-06-19T15:22:45-04:00`. The civil part is what a clock at that offset shows.
+     */
+    public static String printTimestampWithOffset(JiffTimestamp value, JiffOffset offset) {
+        return printDateTime(offset.toDateTime(value)) + printOffset(offset);
+    }
+
+    /**
      * Formats a duration as an ISO 8601 duration with hours as the largest unit, for example
      * `PT2H30M`, `-PT1.5S` or `PT0S`.
      */

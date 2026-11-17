@@ -199,6 +199,126 @@ private class JiffHarnessTest {
     }
 
     @IsTest
+    static void platformTimeZoneEchoesKnownIdsAndIsCaseSensitive() {
+        // JiffTimeZone.get tells a known zone from the GMT fallback by the id coming back
+        // unchanged. That has to hold for aliases, and for zones that really are GMT.
+        for (
+            String id : new List<String>{
+                'GMT',
+                'Etc/GMT',
+                'Etc/UTC',
+                'Etc/GMT+5',
+                'Asia/Calcutta',
+                'Asia/Kolkata',
+                'Australia/Tasmania',
+                'Europe/London'
+            }
+        ) {
+            Assert.areEqual(id, TimeZone.getTimeZone(id).getID());
+        }
+        // Ids are matched exactly: a different letter case is an unknown zone.
+        Assert.areEqual('GMT', TimeZone.getTimeZone('america/new_york').getID());
+        Assert.areEqual('GMT', TimeZone.getTimeZone('').getID());
+        Assert.areEqual(0, TimeZone.getTimeZone('Not/AZone').getOffset(Datetime.newInstance(0L)));
+    }
+
+    @IsTest
+    static void platformTimeZoneOffsetsChangeAtTheExactMillisecond() {
+        TimeZone newYork = TimeZone.getTimeZone('America/New_York');
+        // 2024-03-10T07:00:00Z, when clocks went from 02:00 to 03:00.
+        Assert.areEqual(-18000000, newYork.getOffset(Datetime.newInstance(1710053999999L)));
+        Assert.areEqual(-14400000, newYork.getOffset(Datetime.newInstance(1710054000000L)));
+        // Before the epoch.
+        Assert.areEqual(-14400000, newYork.getOffset(Datetime.newInstance(-5767200001L)));
+        Assert.areEqual(-18000000, newYork.getOffset(Datetime.newInstance(-5767200000L)));
+        // Offsets that are not whole hours, and one of a whole day's difference.
+        TimeZone kolkata = TimeZone.getTimeZone('Asia/Kolkata');
+        Assert.areEqual(19800000, kolkata.getOffset(Datetime.newInstance(0L)));
+        TimeZone apia = TimeZone.getTimeZone('Pacific/Apia');
+        Assert.areEqual(-36000000, apia.getOffset(Datetime.newInstance(1325239199000L)));
+        Assert.areEqual(50400000, apia.getOffset(Datetime.newInstance(1325239200000L)));
+    }
+
+    @IsTest
+    static void platformTimeZoneRulesExtendAcrossTheWholeTimestampRange() {
+        TimeZone newYork = TimeZone.getTimeZone('America/New_York');
+        // Yearly rules keep applying: 9999-11-07T06:00:00Z is the last change JiffTimestamp
+        // can see, and the offset is still defined at the limits of its range.
+        Assert.areEqual(-14400000, newYork.getOffset(Datetime.newInstance(253397570399000L)));
+        Assert.areEqual(-18000000, newYork.getOffset(Datetime.newInstance(253397570400000L)));
+        Assert.areEqual(-18000000, newYork.getOffset(Datetime.newInstance(253402207200000L)));
+        // Zone data differs between platforms before about 1900, so only the sign is pinned.
+        Assert.isTrue(newYork.getOffset(Datetime.newInstance(-377705023201000L)) < 0);
+    }
+
+    @IsTest
+    static void datetimeFormatsTimeZoneAbbreviations() {
+        Datetime summer = Datetime.newInstance(1720493204000L);
+        Datetime winter = Datetime.newInstance(1704941204000L);
+        Assert.areEqual('EDT', summer.format('z', 'America/New_York'));
+        Assert.areEqual('EST', winter.format('z', 'America/New_York'));
+        Assert.areEqual('BST', summer.format('z', 'Europe/London'));
+        Assert.areEqual('GMT', winter.format('z', 'Europe/London'));
+        Assert.areEqual('AEST', summer.format('z', 'Australia/Sydney'));
+        Assert.areEqual('AEDT', winter.format('z', 'Australia/Sydney'));
+        Assert.areEqual('IST', summer.format('z', 'Asia/Kolkata'));
+        // A zone the platform has no name for is written as an offset from GMT.
+        Assert.areEqual('GMT-05:00', summer.format('z', 'Etc/GMT+5'));
+        Assert.areEqual('GMT+14:00', summer.format('z', 'Etc/GMT-14'));
+    }
+
+    @IsTest
+    static void userInfoReportsAZoneThePlatformCanLookUp() {
+        String id = UserInfo.getTimeZone().getID();
+        Assert.isTrue(String.isNotBlank(id));
+        Assert.areEqual(id, TimeZone.getTimeZone(id).getID());
+    }
+
+    @IsTest
+    static void systemClockAgreesWithDatetimeNow() {
+        Long before = System.currentTimeMillis();
+        Long now = Datetime.now().getTime();
+        Long after = System.currentTimeMillis();
+        Assert.isTrue(before <= now && now <= after);
+        // Some time after 2023-11-14.
+        Assert.isTrue(now > 1700000000000L);
+    }
+
+    private class Countdown implements Iterator<String>, Iterable<String> {
+        private Integer remaining = 0;
+
+        Countdown(Integer start) {
+            this.remaining = start;
+        }
+
+        public Boolean hasNext() {
+            return remaining > 0;
+        }
+
+        public String next() {
+            remaining--;
+            return String.valueOf(remaining + 1);
+        }
+
+        public Iterator<String> iterator() {
+            return this;
+        }
+    }
+
+    @IsTest
+    static void forLoopsAcceptACustomIterable() {
+        List<String> seen = new List<String>();
+        for (String value : new Countdown(3)) {
+            seen.add(value);
+        }
+        Assert.areEqual(new List<String>{ '3', '2', '1' }, seen);
+        Iterator<String> cursor = new Countdown(1).iterator();
+        Assert.isTrue(cursor.hasNext());
+        Assert.areEqual('1', cursor.next());
+        Assert.isFalse(cursor.hasNext());
+    }
+
+    @IsTest
     static void datetimeRoundTripsEpochMilliseconds() {
         Datetime instant = Datetime.newInstanceGmt(2024, 2, 29, 12, 30, 45);
         Assert.areEqual(1709209845000L, instant.getTime());
