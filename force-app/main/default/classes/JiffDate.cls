@@ -14,12 +14,53 @@
  * The supported range is `-9999-01-01` through `9999-12-31`. Instances are immutable and
  * ordered chronologically.
  *
+ * ## Arithmetic
+ *
+ * `add` and `subtract` move a date by a `JiffSpan` (calendar units, so "one month" means the
+ * same day next month) or by a `JiffSignedDuration` (an exact length of time, of which only
+ * whole 24 hour days count). They throw when the result leaves the supported range;
+ * `saturatingAdd` and `saturatingSubtract` stop at `MIN` or `MAX` instead.
+ *
+ *     JiffDate.newInstance(2024, 1, 31).add(new JiffSpan().months(1));   // 2024-02-29
+ *
+ * `until` and `since` go the other way and report the span between two dates, in days unless
+ * you ask for a larger unit:
+ *
+ *     JiffDate d1 = JiffDate.newInstance(1995, 12, 7);
+ *     JiffDate d2 = JiffDate.newInstance(2019, 1, 31);
+ *     d1.until(d2);                  // P8456D
+ *     d1.until(d2, JiffUnit.YEAR);   // P23Y1M24D
+ *
+ * A civil date knows nothing of daylight saving time, so wherever a length of time is
+ * involved a day is always exactly 24 hours.
+ *
  * Mirrors `jiff::civil::Date`.
  */
 public class JiffDate implements Comparable {
     private static final Long MIN_EPOCH_DAY = -4371587L;
     private static final Long MAX_EPOCH_DAY = 2932896L;
+    private static final Integer MIN_YEAR = -9999;
+    private static final Integer MAX_YEAR = 9999;
+    // The largest count accepted by `nthWeekday`: the number of whole weeks in the longest
+    // length of time a span can describe.
+    private static final Long MAX_NTH_WEEKDAY = 1043497L;
     private static final List<JiffWeekday> WEEKDAYS = JiffWeekday.values();
+    // Indexed by month (1..12): the number of days in a common year before that month starts.
+    private static final List<Integer> DAYS_BEFORE_MONTH = new List<Integer>{
+        0,
+        0,
+        31,
+        59,
+        90,
+        120,
+        151,
+        181,
+        212,
+        243,
+        273,
+        304,
+        334
+    };
 
     /** The earliest supported date, `-9999-01-01`. */
     public static final JiffDate MIN = new JiffDate(-9999, 1, 1);
@@ -77,7 +118,7 @@ public class JiffDate implements Comparable {
     }
 
     private static void checkYearAndMonth(Integer year, Integer month) {
-        JiffMath.check(year, -9999L, 9999L, 'year');
+        JiffMath.check(year, MIN_YEAR, MAX_YEAR, 'year');
         JiffMath.check(month, 1L, 12L, 'month');
     }
 
@@ -104,6 +145,71 @@ public class JiffDate implements Comparable {
         Long month = monthFromMarch < 10 ? monthFromMarch + 3 : monthFromMarch - 9;
         Long year = yearOfEra + era * 400 + (month <= 2 ? 1 : 0);
         return new JiffDate(year.intValue(), month.intValue(), day.intValue());
+    }
+
+    /**
+     * Creates the date that is day number `day` of `year`, where day `1` is January 1st.
+     *
+     * The day must be in `1..366`, and `366` is only valid in a leap year. Throws if the year
+     * or the day is out of range. `with().dayOfYear(day)` is the usual way to reach this.
+     */
+    public static JiffDate fromDayOfYear(Integer year, Integer day) {
+        JiffMath.check(year, MIN_YEAR, MAX_YEAR, 'year');
+        JiffMath.check(day, 1L, 366L, 'day-of-year');
+        if (day == 366 && !isLeapYear(year)) {
+            throw new JiffException(
+                'number of days for `' + padYear(year) + '` is invalid, must be in range `1..=365`'
+            );
+        }
+        return fromEpochDay(new JiffDate(year, 1, 1).toEpochDay() + day - 1);
+    }
+
+    /**
+     * Creates the date that is day number `day` of `year`, counting as if leap days did not
+     * exist: day `60` is always March 1st and day `365` is always December 31st.
+     *
+     * The day must be in `1..365`. February 29th is never returned. Throws if the year or the
+     * day is out of range. `with().dayOfYearNoLeap(day)` is the usual way to reach this.
+     */
+    public static JiffDate fromDayOfYearNoLeap(Integer year, Integer day) {
+        JiffMath.check(year, MIN_YEAR, MAX_YEAR, 'year');
+        JiffMath.check(day, 1L, 365L, 'day-of-year (skipping Feb 29)');
+        return fromDayOfYear(year, day >= 60 && isLeapYear(year) ? day + 1 : day);
+    }
+
+    /**
+     * Converts an ISO 8601 week date to the Gregorian date of the same day. This never fails:
+     * the two types cover exactly the same range. Equivalent to `weekDate.toDate()`.
+     */
+    public static JiffDate fromIsoWeekDate(JiffIsoWeekDate weekDate) {
+        return weekDate.toDate();
+    }
+
+    /**
+     * Converts a platform `Date` to a `JiffDate` with the same year, month and day.
+     *
+     * Throws if the platform date has no counterpart here. That can only happen far from the
+     * present: a year outside `-9999..9999`, or a day that exists in the platform's calendar
+     * but not in the proleptic Gregorian one. The platform switches to the Julian calendar
+     * before 15 October 1582, where for example 29 February 1500 is a real day.
+     */
+    public static JiffDate fromSystemDate(Date value) {
+        if (value == null) {
+            throw new JiffException('the system Date to convert must not be null');
+        }
+        return newInstance(value.year(), value.month(), value.day());
+    }
+
+    /**
+     * Starts building a new date from this one with some fields replaced:
+     *
+     *     JiffDate.newInstance(2024, 10, 31).with().month(11).day(30).build();   // 2024-11-30
+     *
+     * Nothing is validated until `build()`, so the fields can be set in any order. See
+     * `JiffDateWith` for the fields that can be set.
+     */
+    public JiffDateWith with() {
+        return new JiffDateWith(this);
     }
 
     // ---- accessors ------------------------------------------------------
@@ -152,8 +258,508 @@ public class JiffDate implements Comparable {
         return month == 4 || month == 6 || month == 9 || month == 11 ? 30 : 31;
     }
 
+    /**
+     * The year within its era, in `1..10000`. Pair it with `era()`.
+     *
+     * Years from `1` onward are unchanged (`2024` is `2024 CE`). Year `0` is `1 BCE`, year
+     * `-1` is `2 BCE`, and so on back to year `-9999`, which is `10000 BCE`. Jiff returns the
+     * year and the era together as a tuple; here they are two accessors.
+     */
+    public Integer eraYear() {
+        return yearValue >= 1 ? yearValue : 1 - yearValue;
+    }
+
+    /** The era of this date's year: `CE` for years from `1` onward, `BCE` for the rest. */
+    public JiffEra era() {
+        return yearValue >= 1 ? JiffEra.CE : JiffEra.BCE;
+    }
+
+    /**
+     * The position of this date within its year, where January 1st is day `1`. December 31st
+     * is day `365`, or day `366` in a leap year.
+     */
+    public Integer dayOfYear() {
+        Integer leapDay = monthValue > 2 && inLeapYear() ? 1 : 0;
+        return DAYS_BEFORE_MONTH.get(monthValue) + leapDay + dayValue;
+    }
+
+    /**
+     * The position of this date within its year as if leap days did not exist, in `1..365`.
+     * December 31st is always day `365`, in leap years too.
+     *
+     * Returns null for February 29th, which has no position in this scheme.
+     */
+    public Integer dayOfYearNoLeap() {
+        Integer days = dayOfYear();
+        if (!inLeapYear() || days < 60) {
+            return days;
+        }
+        if (days == 60) {
+            return null;
+        }
+        return days - 1;
+    }
+
+    /** The first day of this date's month. */
+    public JiffDate firstOfMonth() {
+        return new JiffDate(yearValue, monthValue, 1);
+    }
+
+    /** The last day of this date's month. */
+    public JiffDate lastOfMonth() {
+        return new JiffDate(yearValue, monthValue, daysInMonth());
+    }
+
+    /** The number of days in this date's month: 28, 29, 30 or 31. */
+    public Integer daysInMonth() {
+        return daysInMonth(yearValue, monthValue);
+    }
+
+    /** January 1st of this date's year. */
+    public JiffDate firstOfYear() {
+        return new JiffDate(yearValue, 1, 1);
+    }
+
+    /** December 31st of this date's year. */
+    public JiffDate lastOfYear() {
+        return new JiffDate(yearValue, 12, 31);
+    }
+
+    /** The number of days in this date's year: 366 in a leap year, otherwise 365. */
+    public Integer daysInYear() {
+        return inLeapYear() ? 366 : 365;
+    }
+
+    /** Whether this date's year is a leap year. */
+    public Boolean inLeapYear() {
+        return isLeapYear(yearValue);
+    }
+
+    // ---- neighbouring dates ---------------------------------------------
+
+    /** The day after this one. Throws for `MAX`, which has no tomorrow. */
+    public JiffDate tomorrow() {
+        if (dayValue < 28 || dayValue < daysInMonth()) {
+            return new JiffDate(yearValue, monthValue, dayValue + 1);
+        }
+        if (monthValue < 12) {
+            return new JiffDate(yearValue, monthValue + 1, 1);
+        }
+        return new JiffDate(JiffMath.checkInt(yearValue + 1, MIN_YEAR, MAX_YEAR, 'year'), 1, 1);
+    }
+
+    /** The day before this one. Throws for `MIN`, which has no yesterday. */
+    public JiffDate yesterday() {
+        if (dayValue > 1) {
+            return new JiffDate(yearValue, monthValue, dayValue - 1);
+        }
+        if (monthValue > 1) {
+            return new JiffDate(yearValue, monthValue - 1, daysInMonth(yearValue, monthValue - 1));
+        }
+        return new JiffDate(JiffMath.checkInt(yearValue - 1, MIN_YEAR, MAX_YEAR, 'year'), 12, 31);
+    }
+
+    /**
+     * The `nth` occurrence of `weekday` in this date's month.
+     *
+     * A positive `nth` counts from the start of the month and a negative one from the end, so
+     * `2` with `FRIDAY` is the second Friday and `-1` with `THURSDAY` is the last Thursday.
+     * The day of this date does not matter, only its year and month.
+     *
+     * Throws if `nth` is zero or outside `-5..5`, or if it is `5` or `-5` and the month has
+     * only four of that weekday.
+     */
+    public JiffDate nthWeekdayOfMonth(Integer nth, JiffWeekday weekday) {
+        JiffMath.check(nth, -5L, 5L, 'nth weekday of month');
+        if (nth == 0) {
+            throw JiffMath.rangeError('nth weekday of month', -5L, 5L);
+        }
+        if (nth > 0) {
+            Integer toFirst = JiffWeekdays.since(weekday, firstOfMonth().weekday());
+            return newInstance(yearValue, monthValue, 1 + toFirst + (nth - 1) * 7);
+        }
+        JiffDate last = lastOfMonth();
+        Integer fromLast = JiffWeekdays.since(last.weekday(), weekday);
+        return newInstance(yearValue, monthValue, last.day() - fromLast + (nth + 1) * 7);
+    }
+
+    /**
+     * The `nth` occurrence of `weekday` after this date, or before it when `nth` is negative.
+     *
+     * This date itself is never counted. If today is a Sunday, the first Sunday (`nth` of
+     * `1`) is a week from today and the first Monday is tomorrow; the first Saturday
+     * backwards (`nth` of `-1`) is yesterday.
+     *
+     * Throws if `nth` is zero, or if the result would fall outside the supported range.
+     */
+    public JiffDate nthWeekday(Integer nth, JiffWeekday weekday) {
+        JiffMath.check(nth, -MAX_NTH_WEEKDAY, MAX_NTH_WEEKDAY, 'nth weekday');
+        if (nth == 0) {
+            throw JiffMath.rangeError('nth weekday', -MAX_NTH_WEEKDAY, MAX_NTH_WEEKDAY);
+        }
+        JiffWeekday mine = weekday();
+        Long days;
+        if (nth > 0) {
+            Integer toFirst = JiffWeekdays.since(weekday, JiffWeekdays.next(mine));
+            days = (nth - 1) * 7L + toFirst + 1;
+        } else {
+            Integer toFirst = JiffWeekdays.since(JiffWeekdays.previous(mine), weekday);
+            days = (nth + 1) * 7L - toFirst - 1;
+        }
+        return fromEpochDay(toEpochDay() + days);
+    }
+
+    // ---- conversions ----------------------------------------------------
+
+    /**
+     * Converts this date to its ISO 8601 week date: a week year, a week number and a weekday.
+     * This never fails. See `JiffIsoWeekDate` for how the week calendar works.
+     */
+    public JiffIsoWeekDate toIsoWeekDate() {
+        return JiffIsoWeekDate.fromDate(this);
+    }
+
+    /**
+     * Converts this date to a platform `Date` with the same year, month and day.
+     *
+     * The platform calendar is Gregorian from 15 October 1582 and Julian before that, so it
+     * has no 5th to 14th of October 1582; this throws for those ten dates. Earlier dates
+     * convert field for field, but be aware that the platform will then do its own arithmetic
+     * on them (day of week, days between) in the Julian calendar.
+     */
+    public Date toSystemDate() {
+        if (yearValue == 1582 && monthValue == 10 && dayValue >= 5 && dayValue <= 14) {
+            throw new JiffException(
+                'cannot convert `' +
+                    toString() +
+                    '` to a system Date: the platform calendar skips from 1582-10-04 to 1582-10-15'
+            );
+        }
+        return Date.newInstance(yearValue, monthValue, dayValue);
+    }
+
+    // ---- arithmetic -----------------------------------------------------
+
+    /**
+     * Adds a span to this date. A negative span moves backwards.
+     *
+     * The units are applied from largest to smallest. Years and months move the date on the
+     * calendar first, and if that lands on a day the month does not have, the day is pulled
+     * back to the end of the month: `2024-03-31 + 1 month` is `2024-04-30`. Weeks and days
+     * are then counted off. Units of time count only as whole 24 hour days: `23 hours`
+     * changes nothing and `28 hours` adds one day.
+     *
+     * Because of the end of month rule, adding a span with years or months and then
+     * subtracting it again does not always return to the same date. Spans of weeks and days
+     * are always reversible.
+     *
+     * Throws if the result is outside the supported range.
+     */
+    public JiffDate add(JiffSpan span) {
+        if (span.isZero()) {
+            return this;
+        }
+        if (span.largestUnit() == JiffUnit.DAY && span.smallestUnit() == JiffUnit.DAY) {
+            return addDays(span.getDays());
+        }
+        Long monthIndex = monthValue - 1 + span.getMonths();
+        Long year = yearValue + JiffMath.floorDiv(monthIndex, 12L);
+        JiffMath.check(year, MIN_YEAR, MAX_YEAR, 'year');
+        year = JiffMath.check(year + span.getYears(), MIN_YEAR, MAX_YEAR, 'year');
+        JiffDate shifted = constrain(
+            year.intValue(),
+            JiffMath.floorMod(monthIndex, 12L).intValue() + 1,
+            dayValue
+        );
+        // Every unit of a span has the same sign, so if the total is in range then so is each
+        // partial sum, and a single range check at the end is enough.
+        Long epochDay = shifted.toEpochDay() + 7 * span.getWeeks() + span.getDays();
+        if (span.hasTimeUnits()) {
+            // Jiff requires the day count carried by the time units to be a valid epoch day
+            // in its own right, which is stricter than requiring the result to be in range.
+            epochDay += JiffMath.check(
+                span.toInvariantDurationTimeOnly().asSecs() / JiffMath.SECS_PER_CIVIL_DAY,
+                MIN_EPOCH_DAY,
+                MAX_EPOCH_DAY,
+                'Unix epoch days'
+            );
+        }
+        return fromEpochDay(epochDay);
+    }
+
+    /**
+     * Adds an exact duration to this date. A negative duration moves backwards.
+     *
+     * Only the whole 24 hour days in the duration count; whatever is left over is dropped, so
+     * adding 47 hours moves the date by one day. Throws if the result is outside the
+     * supported range.
+     */
+    public JiffDate add(JiffSignedDuration duration) {
+        Long days = duration.asSecs() / JiffMath.SECS_PER_CIVIL_DAY;
+        if (JiffMath.lessThan(days, MIN_EPOCH_DAY) || JiffMath.greaterThan(days, MAX_EPOCH_DAY)) {
+            throw new JiffException(
+                'number of days derived from duration exceed\'s Jiff\'s datetime limits: ' +
+                JiffMath.rangeError('Unix epoch days', MIN_EPOCH_DAY, MAX_EPOCH_DAY).getMessage()
+            );
+        }
+        return addDays(days);
+    }
+
+    /**
+     * Moves this date by a number of days that is small enough for the sum not to overflow.
+     * Throws if the result is outside the supported range.
+     */
+    private JiffDate addDays(Long days) {
+        if (days == 0) {
+            return this;
+        }
+        if (days == 1) {
+            return tomorrow();
+        }
+        if (days == -1) {
+            return yesterday();
+        }
+        return fromEpochDay(toEpochDay() + days);
+    }
+
+    /**
+     * Subtracts a span from this date. The same as adding the span negated; see
+     * `add(JiffSpan)` for how each unit is applied.
+     */
+    public JiffDate subtract(JiffSpan span) {
+        return add(span.negate());
+    }
+
+    /**
+     * Subtracts an exact duration from this date. The same as adding the duration negated;
+     * see `add(JiffSignedDuration)`.
+     */
+    public JiffDate subtract(JiffSignedDuration duration) {
+        if (duration.asSecs() == JiffMath.LONG_MIN) {
+            // The negation does not fit in a signed duration. Jiff reaches the same dead end
+            // by way of an unsigned duration, and reports it like this.
+            throw new JiffException(
+                'unsigned duration exceeds Jiff\'s limits: ' +
+                JiffMath.rangeError('signed duration seconds', JiffMath.LONG_MIN, JiffMath.LONG_MAX)
+                    .getMessage()
+            );
+        }
+        return add(duration.negate());
+    }
+
+    /**
+     * Like `add(JiffSpan)`, except that instead of throwing when the result is out of range
+     * it returns `MAX` (for a positive span) or `MIN` (for a negative one).
+     */
+    public JiffDate saturatingAdd(JiffSpan span) {
+        try {
+            return add(span);
+        } catch (JiffException e) {
+            return span.isNegative() ? MIN : MAX;
+        }
+    }
+
+    /**
+     * Like `add(JiffSignedDuration)`, except that instead of throwing when the result is out
+     * of range it returns `MAX` (for a positive duration) or `MIN` (for a negative one).
+     */
+    public JiffDate saturatingAdd(JiffSignedDuration duration) {
+        try {
+            return add(duration);
+        } catch (JiffException e) {
+            return duration.isNegative() ? MIN : MAX;
+        }
+    }
+
+    /**
+     * Like `subtract(JiffSpan)`, except that instead of throwing when the result is out of
+     * range it returns `MIN` (for a positive span) or `MAX` (for a negative one).
+     */
+    public JiffDate saturatingSubtract(JiffSpan span) {
+        return saturatingAdd(span.negate());
+    }
+
+    /**
+     * Like `subtract(JiffSignedDuration)`, except that instead of throwing when the result is
+     * out of range it returns `MIN` (for a positive duration) or `MAX` (for a negative one).
+     */
+    public JiffDate saturatingSubtract(JiffSignedDuration duration) {
+        if (duration.asSecs() == JiffMath.LONG_MIN) {
+            // Too negative to negate, so subtracting it certainly overflows forwards.
+            return MAX;
+        }
+        return saturatingAdd(duration.negate());
+    }
+
+    // ---- differences ----------------------------------------------------
+
+    /**
+     * The span from this date until `other`, in days. It is negative when `other` is earlier.
+     *
+     * Subtracting the result from `other` always gives this date back.
+     */
+    public JiffSpan until(JiffDate other) {
+        return until(other, JiffUnit.DAY);
+    }
+
+    /**
+     * The span from this date until `other`, using units up to `largest`, which must be
+     * `DAY`, `WEEK`, `MONTH` or `YEAR` (null means `DAY`). It is negative when `other` is
+     * earlier.
+     *
+     *     JiffDate d1 = JiffDate.newInstance(1995, 12, 7);
+     *     JiffDate d2 = JiffDate.newInstance(2019, 1, 31);
+     *     d1.until(d2, JiffUnit.YEAR);    // P23Y1M24D
+     *     d1.until(d2, JiffUnit.MONTH);   // P277M24D
+     *
+     * With months or years the answer is the number of whole months that can be added to this
+     * date without passing `other`, and then the days left over. Months differ in length, so
+     * such a span is tied to its starting point: adding it to this date gives `other`, but
+     * subtracting it from `other` may not give this date back. Spans of weeks and days do not
+     * have that problem.
+     *
+     * Nothing is rounded here. This is the exact difference, and the computation that every
+     * other form of `until` and `since` builds on.
+     *
+     * Throws if `largest` is smaller than a day, or if the two dates are so far apart that
+     * the difference does not fit in a span of months.
+     */
+    public JiffSpan until(JiffDate other, JiffUnit largest) {
+        JiffUnit unit = largest == null ? JiffUnit.DAY : largest;
+        if (!JiffMath.isCalendar(unit)) {
+            throw new JiffException(
+                '\'' + JiffMath.singular(unit) + '\' not allowed as a date unit for rounding span'
+            );
+        }
+        if (equals(other)) {
+            return new JiffSpan();
+        }
+        if (unit == JiffUnit.DAY) {
+            return new JiffSpan().days(other.toEpochDay() - toEpochDay());
+        }
+        if (unit == JiffUnit.WEEK) {
+            Long days = other.toEpochDay() - toEpochDay();
+            return new JiffSpan().weeks(days / 7).days(JiffMath.truncMod(days, 7L));
+        }
+        return untilInMonths(other, unit == JiffUnit.YEAR);
+    }
+
+    /**
+     * The difference to `other` in years, months and days, or in months and days when
+     * `useYears` is false. The two dates must not be equal.
+     *
+     * This follows the Temporal specification (`CalendarDateUntil`): step from this date
+     * toward `other` in whole months for as long as that does not overshoot, clamping to the
+     * end of shorter months on the way, and count what remains in days.
+     */
+    private JiffSpan untilInMonths(JiffDate other, Boolean useYears) {
+        Integer year2 = other.yearValue;
+        Integer month2 = other.monthValue;
+        Integer years = year2 - yearValue;
+        Integer months = month2 - monthValue;
+        Integer days = other.dayValue - dayValue;
+        if (years != 0 || months != 0) {
+            Integer sign = JiffMath.signum(years != 0 ? years : months);
+            Integer daysInMonth2 = other.daysInMonth();
+            Integer dayCorrection = 0;
+            if (JiffMath.signum(days) == -sign) {
+                // The day of the month falls short of a whole month, so measure the days from
+                // the month before `other` (or after it, when going backwards). That month
+                // always exists: the dates are on the far side of it from each other.
+                Integer originalDaysInMonth2 = daysInMonth2;
+                month2 -= sign;
+                if (month2 < 1) {
+                    year2 -= 1;
+                    month2 += 12;
+                } else if (month2 > 12) {
+                    year2 += 1;
+                    month2 -= 12;
+                }
+                years = year2 - yearValue;
+                months = month2 - monthValue;
+                daysInMonth2 = daysInMonth(year2, month2);
+                dayCorrection = sign < 0 ? -originalDaysInMonth2 : daysInMonth2;
+            }
+            days = other.dayValue - Math.min(dayValue, daysInMonth2) + dayCorrection;
+            if (years != 0 && JiffMath.signum(months) == -sign) {
+                // Likewise the month falls short of a whole year.
+                years -= sign;
+                months += sign * 12;
+            }
+        }
+        if (!useYears) {
+            months += years * 12;
+            years = 0;
+        }
+        return new JiffSpan().years(years).months(months).days(days);
+    }
+
+    /**
+     * The span from `other` until this date, in days. It is negative when `other` is later.
+     * This is `until(other)` with the sign flipped.
+     */
+    public JiffSpan since(JiffDate other) {
+        return until(other).negate();
+    }
+
+    /**
+     * The span from `other` until this date, using units up to `largest`. It is negative when
+     * `other` is later.
+     *
+     * This is `until(other, largest)` with the sign flipped: the months are still counted
+     * starting from this date, going back to `other`. That is not always the same as
+     * `other.until(this, largest)`, which counts forward from `other`. From `2020-04-30` back
+     * to `2020-02-29` is exactly two months, while from `2020-02-29` forward to `2020-04-30`
+     * is two months and a day.
+     */
+    public JiffSpan since(JiffDate other, JiffUnit largest) {
+        return until(other, largest).negate();
+    }
+
+    /**
+     * The exact length of time from this date until `other`, counting every day as 24 hours.
+     * It is negative when `other` is earlier. This never fails.
+     *
+     * Prefer `until` unless you specifically need an absolute duration.
+     */
+    public JiffSignedDuration durationUntil(JiffDate other) {
+        return JiffSignedDuration.fromHours(24 * (other.toEpochDay() - toEpochDay()));
+    }
+
+    /**
+     * The exact length of time from `other` until this date, counting every day as 24 hours.
+     * It is negative when `other` is later. This never fails.
+     */
+    public JiffSignedDuration durationSince(JiffDate other) {
+        return other.durationUntil(this);
+    }
+
+    /**
+     * The dates a fixed span apart, starting with this one: this date, this date plus
+     * `period`, this date plus twice `period`, and so on. A negative period walks backwards.
+     *
+     *     // Every Halloween of the 2020s.
+     *     JiffDate first = JiffDate.newInstance(2020, 10, 31);
+     *     for (JiffDate halloween : first.series(new JiffSpan().years(1))) {
+     *         if (halloween.year() > 2029) {
+     *             break;
+     *         }
+     *         // ...
+     *     }
+     *
+     * The series has no end of its own; it stops only when it leaves the supported range, so
+     * a loop over it needs its own exit. See `JiffDateSeries`.
+     */
+    public JiffDateSeries series(JiffSpan period) {
+        return new JiffDateSeries(this, period);
+    }
+
     // ---- comparison -----------------------------------------------------
 
+    /**
+     * Orders dates chronologically: negative when this date is earlier than `other`, zero
+     * when they are the same day and positive when it is later.
+     */
     public Integer compareTo(Object other) {
         JiffDate that = (JiffDate) other;
         if (yearValue != that.yearValue) {
@@ -165,14 +771,17 @@ public class JiffDate implements Comparable {
         return dayValue < that.dayValue ? -1 : (dayValue > that.dayValue ? 1 : 0);
     }
 
+    /** Whether this date is strictly earlier than `other`. */
     public Boolean isBefore(JiffDate other) {
         return compareTo(other) < 0;
     }
 
+    /** Whether this date is strictly later than `other`. */
     public Boolean isAfter(JiffDate other) {
         return compareTo(other) > 0;
     }
 
+    /** Whether `other` is a date with the same year, month and day. */
     public Boolean equals(Object other) {
         if (!(other instanceof JiffDate)) {
             return false;
@@ -183,6 +792,7 @@ public class JiffDate implements Comparable {
             dayValue == that.dayValue;
     }
 
+    /** A hash consistent with `equals`, so dates can be map keys and set members. */
     public Integer hashCode() {
         return (yearValue * 13 + monthValue) * 32 + dayValue;
     }

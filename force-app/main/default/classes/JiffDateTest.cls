@@ -230,4 +230,606 @@ private class JiffDateTest {
         Assert.areEqual('-009999-01-01', JiffDate.MIN.toString());
         Assert.areEqual('9999-12-31', JiffDate.MAX.toString());
     }
+
+    private static JiffDate ymd(Integer year, Integer month, Integer day) {
+        return JiffDate.newInstance(year, month, day);
+    }
+
+    // ---- era ------------------------------------------------------------
+
+    @IsTest
+    static void reportsTheYearWithinItsEra() {
+        Assert.areEqual(2024, ymd(2024, 10, 3).eraYear());
+        Assert.areEqual(JiffEra.CE, ymd(2024, 10, 3).era());
+        Assert.areEqual(1, ymd(1, 10, 3).eraYear());
+        Assert.areEqual(JiffEra.CE, ymd(1, 10, 3).era());
+        Assert.areEqual(1, ymd(0, 10, 3).eraYear());
+        Assert.areEqual(JiffEra.BCE, ymd(0, 10, 3).era());
+        Assert.areEqual(2, ymd(-1, 10, 3).eraYear());
+        Assert.areEqual(JiffEra.BCE, ymd(-1, 10, 3).era());
+        Assert.areEqual(11, ymd(-10, 10, 3).eraYear());
+        Assert.areEqual(JiffEra.BCE, ymd(-10, 10, 3).era());
+        Assert.areEqual(10000, ymd(-9999, 10, 3).eraYear());
+        Assert.areEqual(JiffEra.BCE, ymd(-9999, 10, 3).era());
+        Assert.areEqual(9999, JiffDate.MAX.eraYear());
+        Assert.areEqual(JiffEra.CE, JiffDate.MAX.era());
+    }
+
+    // ---- position in the year and month ---------------------------------
+
+    @IsTest
+    static void countsTheDayOfTheYear() {
+        Assert.areEqual(236, ymd(2006, 8, 24).dayOfYear());
+        Assert.areEqual(365, ymd(2023, 12, 31).dayOfYear());
+        Assert.areEqual(366, ymd(2024, 12, 31).dayOfYear());
+        Assert.areEqual(1, ymd(2024, 1, 1).dayOfYear());
+        Assert.areEqual(60, ymd(2024, 2, 29).dayOfYear());
+        Assert.areEqual(60, ymd(2023, 3, 1).dayOfYear());
+        Assert.areEqual(61, ymd(2024, 3, 1).dayOfYear());
+        Assert.areEqual(366, ymd(-4, 12, 31).dayOfYear());
+        Assert.areEqual(61, ymd(0, 3, 1).dayOfYear());
+        Assert.areEqual(1, JiffDate.MIN.dayOfYear());
+        Assert.areEqual(365, JiffDate.MAX.dayOfYear());
+        Assert.areEqual(365, ymd(1900, 12, 31).dayOfYear());
+        Assert.areEqual(366, ymd(2000, 12, 31).dayOfYear());
+    }
+
+    @IsTest
+    static void countsTheDayOfTheYearIgnoringLeapDays() {
+        Assert.areEqual(236, ymd(2006, 8, 24).dayOfYearNoLeap());
+        Assert.areEqual(365, ymd(2023, 12, 31).dayOfYearNoLeap());
+        Assert.areEqual(365, ymd(2024, 12, 31).dayOfYearNoLeap());
+        Assert.isNull(ymd(2024, 2, 29).dayOfYearNoLeap());
+        Assert.areEqual(59, ymd(2024, 2, 28).dayOfYearNoLeap());
+        Assert.areEqual(60, ymd(2024, 3, 1).dayOfYearNoLeap());
+        Assert.areEqual(60, ymd(2023, 3, 1).dayOfYearNoLeap());
+        Assert.areEqual(365, ymd(-4, 12, 31).dayOfYearNoLeap());
+        Assert.areEqual(60, ymd(0, 3, 1).dayOfYearNoLeap());
+        Assert.isNull(ymd(0, 2, 29).dayOfYearNoLeap());
+        Assert.areEqual(1, JiffDate.MIN.dayOfYearNoLeap());
+        Assert.areEqual(365, JiffDate.MAX.dayOfYearNoLeap());
+        // A caller that needs to test for null assigns the result to a local first.
+        Integer leapDay = ymd(2024, 2, 29).dayOfYearNoLeap();
+        Assert.isTrue(leapDay == null);
+        Integer lastDay = ymd(2024, 12, 31).dayOfYearNoLeap();
+        Assert.isTrue(lastDay != null);
+        Assert.areEqual(366, lastDay + 1);
+    }
+
+    @IsTest
+    static void buildsADateFromItsDayOfTheYear() {
+        Assert.areEqual(ymd(2024, 2, 29), JiffDate.fromDayOfYear(2024, 60));
+        Assert.areEqual(ymd(2023, 3, 1), JiffDate.fromDayOfYear(2023, 60));
+        Assert.areEqual(ymd(2024, 12, 31), JiffDate.fromDayOfYear(2024, 366));
+        Assert.areEqual(ymd(2024, 3, 1), JiffDate.fromDayOfYearNoLeap(2024, 60));
+        Assert.areEqual(ymd(2024, 2, 28), JiffDate.fromDayOfYearNoLeap(2024, 59));
+        Assert.areEqual(ymd(2024, 12, 31), JiffDate.fromDayOfYearNoLeap(2024, 365));
+        Assert.areEqual(JiffDate.MAX, JiffDate.fromDayOfYear(9999, 365));
+        Assert.areEqual(JiffDate.MIN, JiffDate.fromDayOfYearNoLeap(-9999, 1));
+        try {
+            JiffDate.fromDayOfYear(9999, 366);
+            Assert.fail('expected day 366 of a common year to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'number of days for `9999` is invalid, must be in range `1..=365`',
+                e.getMessage()
+            );
+        }
+        try {
+            JiffDate.fromDayOfYear(10000, 1);
+            Assert.fail('expected an out of range year to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'parameter \'year\' is not in the required range of -9999..=9999',
+                e.getMessage()
+            );
+        }
+        try {
+            JiffDate.fromDayOfYearNoLeap(2024, 366);
+            Assert.fail('expected day 366 to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'parameter \'day-of-year (skipping Feb 29)\' is not in the required range of 1..=365',
+                e.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    static void findsTheEndsOfItsMonthAndYear() {
+        Assert.areEqual(ymd(2024, 2, 1), ymd(2024, 2, 29).firstOfMonth());
+        Assert.areEqual(ymd(2024, 2, 29), ymd(2024, 2, 5).lastOfMonth());
+        Assert.areEqual(ymd(2023, 2, 28), ymd(2023, 2, 5).lastOfMonth());
+        Assert.areEqual(ymd(2024, 1, 1), ymd(2024, 2, 29).firstOfYear());
+        Assert.areEqual(ymd(2024, 12, 31), ymd(2024, 2, 5).lastOfYear());
+        Assert.areEqual(JiffDate.MIN, JiffDate.MIN.firstOfMonth());
+        Assert.areEqual(JiffDate.MIN, ymd(-9999, 12, 31).firstOfYear());
+        Assert.areEqual(JiffDate.MAX, JiffDate.MAX.lastOfMonth());
+        Assert.areEqual(JiffDate.MAX, ymd(9999, 1, 1).lastOfYear());
+    }
+
+    @IsTest
+    static void firstAndLastOfAgreeForEveryDayOfSampledYears() {
+        for (Integer year : new List<Integer>{ -9999, -4, 0, 1900, 2023, 2024, 9999 }) {
+            for (Integer month = 1; month <= 12; month++) {
+                Integer length = JiffDate.daysInMonth(year, month);
+                for (Integer day = 1; day <= length; day += 9) {
+                    JiffDate d = ymd(year, month, day);
+                    Assert.areEqual(ymd(year, month, 1), d.firstOfMonth());
+                    Assert.areEqual(ymd(year, month, length), d.lastOfMonth());
+                    Assert.areEqual(ymd(year, 1, 1), d.firstOfYear());
+                    Assert.areEqual(ymd(year, 12, 31), d.lastOfYear());
+                    Assert.areEqual(length, d.daysInMonth());
+                }
+            }
+        }
+    }
+
+    @IsTest
+    static void knowsTheLengthOfItsMonthAndYear() {
+        Assert.areEqual(29, ymd(2024, 2, 10).daysInMonth());
+        Assert.areEqual(28, ymd(2023, 2, 10).daysInMonth());
+        Assert.areEqual(31, ymd(2024, 8, 15).daysInMonth());
+        Assert.areEqual(30, ymd(2024, 9, 15).daysInMonth());
+        Assert.areEqual(366, ymd(2024, 7, 10).daysInYear());
+        Assert.areEqual(365, ymd(2023, 7, 10).daysInYear());
+        Assert.isTrue(ymd(2024, 1, 1).inLeapYear());
+        Assert.isFalse(ymd(2023, 12, 31).inLeapYear());
+        for (Integer year : new List<Integer>{ -400, -104, -4, 0, 1904, 2000, 2004, 2024 }) {
+            Assert.isTrue(ymd(year, 6, 1).inLeapYear(), year + ' should be a leap year');
+            Assert.areEqual(366, ymd(year, 6, 1).daysInYear());
+        }
+        for (Integer year : new List<Integer>{ -401, -100, -1, 1900, 1999, 2001, 2002, 2003 }) {
+            Assert.isFalse(ymd(year, 6, 1).inLeapYear(), year + ' should not be a leap year');
+            Assert.areEqual(365, ymd(year, 6, 1).daysInYear());
+        }
+    }
+
+    @IsTest
+    static void weekdaysOfAKnownWeek() {
+        Assert.areEqual(JiffWeekday.SATURDAY, ymd(2026, 2, 14).weekday());
+        Assert.areEqual(JiffWeekday.SUNDAY, ymd(2026, 2, 15).weekday());
+        Assert.areEqual(JiffWeekday.MONDAY, ymd(2026, 2, 16).weekday());
+        Assert.areEqual(JiffWeekday.TUESDAY, ymd(2026, 2, 17).weekday());
+        Assert.areEqual(JiffWeekday.WEDNESDAY, ymd(2026, 2, 18).weekday());
+        Assert.areEqual(JiffWeekday.THURSDAY, ymd(2026, 2, 19).weekday());
+        Assert.areEqual(JiffWeekday.FRIDAY, ymd(2026, 2, 20).weekday());
+        Assert.areEqual(JiffWeekday.SATURDAY, ymd(2026, 2, 21).weekday());
+        // The Unix epoch was on a Thursday, in every numbering scheme.
+        JiffWeekday epoch = ymd(1970, 1, 1).weekday();
+        Assert.areEqual(3, JiffWeekdays.toMondayZeroOffset(epoch));
+        Assert.areEqual(4, JiffWeekdays.toMondayOneOffset(epoch));
+        Assert.areEqual(4, JiffWeekdays.toSundayZeroOffset(epoch));
+        Assert.areEqual(5, JiffWeekdays.toSundayOneOffset(epoch));
+    }
+
+    // ---- tomorrow and yesterday -----------------------------------------
+
+    @IsTest
+    static void tomorrowCrossesMonthAndYearBoundaries() {
+        Assert.areEqual(ymd(2024, 7, 4), ymd(2024, 7, 3).tomorrow());
+        Assert.areEqual(ymd(2024, 7, 1), ymd(2024, 6, 30).tomorrow());
+        Assert.areEqual(ymd(2024, 5, 31), ymd(2024, 5, 30).tomorrow());
+        Assert.areEqual(ymd(2024, 6, 1), ymd(2024, 5, 31).tomorrow());
+        Assert.areEqual(ymd(2024, 2, 29), ymd(2024, 2, 28).tomorrow());
+        Assert.areEqual(ymd(2024, 3, 1), ymd(2024, 2, 29).tomorrow());
+        Assert.areEqual(ymd(2023, 3, 1), ymd(2023, 2, 28).tomorrow());
+        Assert.areEqual(ymd(2024, 1, 1), ymd(2023, 12, 31).tomorrow());
+        Assert.areEqual(ymd(-9999, 1, 2), ymd(-9999, 1, 1).tomorrow());
+        Assert.areEqual(ymd(9999, 12, 31), ymd(9999, 12, 30).tomorrow());
+    }
+
+    @IsTest
+    static void theLastDateHasNoTomorrow() {
+        try {
+            JiffDate.MAX.tomorrow();
+            Assert.fail('expected the maximum date to have no tomorrow');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'parameter \'year\' is not in the required range of -9999..=9999',
+                e.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    static void yesterdayCrossesMonthAndYearBoundaries() {
+        Assert.areEqual(ymd(2024, 7, 2), ymd(2024, 7, 3).yesterday());
+        Assert.areEqual(ymd(2024, 6, 30), ymd(2024, 7, 1).yesterday());
+        Assert.areEqual(ymd(2024, 5, 31), ymd(2024, 6, 1).yesterday());
+        Assert.areEqual(ymd(2024, 2, 29), ymd(2024, 3, 1).yesterday());
+        Assert.areEqual(ymd(2023, 2, 28), ymd(2023, 3, 1).yesterday());
+        Assert.areEqual(ymd(2022, 12, 31), ymd(2023, 1, 1).yesterday());
+        Assert.areEqual(ymd(-9999, 1, 1), ymd(-9999, 1, 2).yesterday());
+        Assert.areEqual(ymd(9999, 12, 30), ymd(9999, 12, 31).yesterday());
+    }
+
+    @IsTest
+    static void theFirstDateHasNoYesterday() {
+        try {
+            JiffDate.MIN.yesterday();
+            Assert.fail('expected the minimum date to have no yesterday');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'parameter \'year\' is not in the required range of -9999..=9999',
+                e.getMessage()
+            );
+        }
+    }
+
+    @IsTest
+    static void tomorrowAndYesterdayUndoEachOtherAndFollowEpochDays() {
+        for (Long epochDay = -4371586L; epochDay < 2932896L; epochDay += 1777) {
+            JiffDate d = JiffDate.fromEpochDay(epochDay);
+            Assert.areEqual(JiffDate.fromEpochDay(epochDay + 1), d.tomorrow());
+            Assert.areEqual(JiffDate.fromEpochDay(epochDay - 1), d.yesterday());
+            Assert.areEqual(d, d.yesterday().tomorrow());
+            Assert.areEqual(d, d.tomorrow().yesterday());
+        }
+    }
+
+    // ---- nth weekday of the month ---------------------------------------
+
+    @IsTest
+    static void findsTheNthWeekdayFromTheStartOfTheMonth() {
+        Assert.areEqual(ymd(2017, 3, 10), ymd(2017, 3, 1).nthWeekdayOfMonth(2, JiffWeekday.FRIDAY));
+        Assert.areEqual(
+            ymd(2024, 3, 25),
+            ymd(2024, 3, 25).nthWeekdayOfMonth(4, JiffWeekday.MONDAY)
+        );
+        // A regression case from Jiff: January 1998 has five Saturdays.
+        Assert.areEqual(
+            ymd(1998, 1, 31),
+            ymd(1998, 1, 1).nthWeekdayOfMonth(5, JiffWeekday.SATURDAY)
+        );
+        Assert.areEqual(ymd(2017, 3, 31), ymd(2017, 3, 1).nthWeekdayOfMonth(5, JiffWeekday.FRIDAY));
+        Assert.areEqual(
+            ymd(2024, 2, 29),
+            ymd(2024, 2, 1).nthWeekdayOfMonth(5, JiffWeekday.THURSDAY)
+        );
+    }
+
+    @IsTest
+    static void findsTheNthWeekdayFromTheEndOfTheMonth() {
+        JiffDate march = ymd(2024, 3, 1);
+        Assert.areEqual(ymd(2024, 3, 28), march.nthWeekdayOfMonth(-1, JiffWeekday.THURSDAY));
+        Assert.areEqual(ymd(2024, 3, 21), march.nthWeekdayOfMonth(-2, JiffWeekday.THURSDAY));
+        Assert.areEqual(ymd(2017, 3, 3), ymd(2017, 3, 1).nthWeekdayOfMonth(-5, JiffWeekday.FRIDAY));
+    }
+
+    private static void assertNoNthWeekdayOfMonth(
+        JiffDate month,
+        Integer nth,
+        JiffWeekday weekday,
+        String expected
+    ) {
+        try {
+            JiffDate found = month.nthWeekdayOfMonth(nth, weekday);
+            Assert.fail('expected no such weekday, but found ' + found);
+        } catch (JiffException e) {
+            Assert.areEqual(expected, e.getMessage());
+        }
+    }
+
+    @IsTest
+    static void aFifthWeekdayThatDoesNotExistIsRejected() {
+        // March 2024 has only four Mondays.
+        assertNoNthWeekdayOfMonth(
+            ymd(2024, 3, 25),
+            5,
+            JiffWeekday.MONDAY,
+            'parameter \'day\' for `2024-03` is invalid, must be in range `1..=31`'
+        );
+        assertNoNthWeekdayOfMonth(
+            ymd(2024, 3, 25),
+            -5,
+            JiffWeekday.MONDAY,
+            'parameter \'day\' is not in the required range of 1..=31'
+        );
+        assertNoNthWeekdayOfMonth(
+            ymd(2024, 2, 1),
+            5,
+            JiffWeekday.FRIDAY,
+            'parameter \'day\' for `2024-02` is invalid, must be in range `1..=29`'
+        );
+        assertNoNthWeekdayOfMonth(
+            ymd(2023, 2, 1),
+            -5,
+            JiffWeekday.FRIDAY,
+            'parameter \'day\' is not in the required range of 1..=31'
+        );
+        assertNoNthWeekdayOfMonth(
+            ymd(2017, 3, 1),
+            5,
+            JiffWeekday.TUESDAY,
+            'parameter \'day\' for `2017-03` is invalid, must be in range `1..=31`'
+        );
+    }
+
+    @IsTest
+    static void nthWeekdayOfMonthRejectsZeroAndCountsBeyondFive() {
+        String expected = 'parameter \'nth weekday of month\' is not in the required range of -5..=5';
+        JiffDate d = ymd(2017, 3, 1);
+        for (Integer nth : new List<Integer>{ 0, 6, -6, 127, -128, 2147483647, -2147483647 }) {
+            assertNoNthWeekdayOfMonth(d, nth, JiffWeekday.TUESDAY, expected);
+        }
+    }
+
+    @IsTest
+    static void nthWeekdayOfMonthWorksInTheFirstAndLastSupportedMonths() {
+        JiffDate first = ymd(-9999, 1, 1);
+        JiffDate last = ymd(9999, 12, 1);
+        for (Integer nth = 1; nth <= 5; nth++) {
+            // January -9999 starts on a Monday and December 9999 ends on a Friday.
+            Assert.areEqual(
+                ymd(-9999, 1, 1 + (nth - 1) * 7),
+                first.nthWeekdayOfMonth(nth, JiffWeekday.MONDAY)
+            );
+            Assert.areEqual(
+                ymd(-9999, 1, 1 + (nth - 1) * 7),
+                first.nthWeekdayOfMonth(nth - 6, JiffWeekday.MONDAY)
+            );
+            Assert.areEqual(
+                ymd(9999, 12, 3 + (nth - 1) * 7),
+                last.nthWeekdayOfMonth(nth, JiffWeekday.FRIDAY)
+            );
+            Assert.areEqual(
+                ymd(9999, 12, 3 + (nth - 1) * 7),
+                last.nthWeekdayOfMonth(nth - 6, JiffWeekday.FRIDAY)
+            );
+        }
+    }
+
+    @IsTest
+    static void everyMonthHasAtLeastFourOfEachWeekday() {
+        for (Integer year : new List<Integer>{ -9999, -1, 0, 1900, 2023, 2024, 9999 }) {
+            for (Integer month = 1; month <= 12; month++) {
+                JiffDate d = ymd(year, month, 1);
+                for (JiffWeekday weekday : JiffWeekdays.cycleForward(JiffWeekday.SUNDAY)) {
+                    for (Integer nth : new List<Integer>{ -4, -3, -2, -1, 1, 2, 3, 4 }) {
+                        JiffDate found = d.nthWeekdayOfMonth(nth, weekday);
+                        Assert.areEqual(weekday, found.weekday());
+                        Assert.areEqual(month, found.month());
+                        Assert.areEqual(year, found.year());
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- nth weekday from a date ----------------------------------------
+
+    @IsTest
+    static void findsTheNthWeekdayAfterADate() {
+        // 2024-03-10 is a Sunday.
+        JiffDate d = ymd(2024, 3, 10);
+        Assert.areEqual(JiffWeekday.SUNDAY, d.weekday());
+        // The next Monday is tomorrow.
+        Assert.areEqual(ymd(2024, 3, 11), d.nthWeekday(1, JiffWeekday.MONDAY));
+        // The next Sunday is a week away, because the date itself does not count.
+        Assert.areEqual(ymd(2024, 3, 17), d.nthWeekday(1, JiffWeekday.SUNDAY));
+        // "Not this Thursday, but next Thursday."
+        Assert.areEqual(ymd(2024, 3, 21), d.nthWeekday(2, JiffWeekday.THURSDAY));
+    }
+
+    @IsTest
+    static void findsTheNthWeekdayBeforeADate() {
+        JiffDate d = ymd(2024, 3, 10);
+        // "Last Saturday" was yesterday.
+        Assert.areEqual(ymd(2024, 3, 9), d.nthWeekday(-1, JiffWeekday.SATURDAY));
+        // "Last Sunday" was a week ago.
+        Assert.areEqual(ymd(2024, 3, 3), d.nthWeekday(-1, JiffWeekday.SUNDAY));
+        Assert.areEqual(ymd(2024, 3, 4), d.nthWeekday(-1, JiffWeekday.MONDAY));
+        // "Not last Thursday, but the one before."
+        Assert.areEqual(ymd(2024, 2, 29), d.nthWeekday(-2, JiffWeekday.THURSDAY));
+    }
+
+    @IsTest
+    static void nthWeekdayCombinesWithNthWeekdayOfMonth() {
+        // Israeli summer time starts on the Friday before the last Sunday in March.
+        JiffDate lastSunday = ymd(2024, 3, 1).nthWeekdayOfMonth(-1, JiffWeekday.SUNDAY);
+        Assert.areEqual(ymd(2024, 3, 29), lastSunday.nthWeekday(-1, JiffWeekday.FRIDAY));
+    }
+
+    @IsTest
+    static void nthWeekdayFindsTheStartOfTheWeek() {
+        JiffDate d = ymd(2024, 3, 15);
+        // For weeks starting with Sunday, and then for weeks starting with Monday.
+        Assert.areEqual(ymd(2024, 3, 10), d.tomorrow().nthWeekday(-1, JiffWeekday.SUNDAY));
+        Assert.areEqual(ymd(2024, 3, 11), d.tomorrow().nthWeekday(-1, JiffWeekday.MONDAY));
+        // It works at both ends of the week too.
+        Assert.areEqual(
+            ymd(2024, 3, 10),
+            ymd(2024, 3, 10).tomorrow().nthWeekday(-1, JiffWeekday.SUNDAY)
+        );
+        Assert.areEqual(
+            ymd(2024, 3, 10),
+            ymd(2024, 3, 16).tomorrow().nthWeekday(-1, JiffWeekday.SUNDAY)
+        );
+    }
+
+    private static void assertNoNthWeekday(
+        JiffDate start,
+        Integer nth,
+        JiffWeekday weekday,
+        String expected
+    ) {
+        try {
+            JiffDate found = start.nthWeekday(nth, weekday);
+            Assert.fail('expected no such weekday, but found ' + found);
+        } catch (JiffException e) {
+            Assert.areEqual(expected, e.getMessage());
+        }
+    }
+
+    @IsTest
+    static void nthWeekdayStopsAtTheEndsOfTheSupportedRange() {
+        String outOfRange = 'parameter \'Unix epoch days\' is not in the required range of -4371587..=2932896';
+        Assert.areEqual(JiffDate.MAX, ymd(9999, 12, 24).nthWeekday(1, JiffWeekday.FRIDAY));
+        Assert.areEqual(JiffDate.MAX, ymd(9999, 12, 30).nthWeekday(1, JiffWeekday.FRIDAY));
+        Assert.areEqual(ymd(9999, 12, 24), JiffDate.MAX.nthWeekday(-1, JiffWeekday.FRIDAY));
+        assertNoNthWeekday(JiffDate.MAX, 1, JiffWeekday.FRIDAY, outOfRange);
+        assertNoNthWeekday(JiffDate.MAX, 1, JiffWeekday.SATURDAY, outOfRange);
+
+        Assert.areEqual(JiffDate.MIN, ymd(-9999, 1, 8).nthWeekday(-1, JiffWeekday.MONDAY));
+        Assert.areEqual(JiffDate.MIN, ymd(-9999, 1, 2).nthWeekday(-1, JiffWeekday.MONDAY));
+        Assert.areEqual(ymd(-9999, 1, 8), JiffDate.MIN.nthWeekday(1, JiffWeekday.MONDAY));
+        assertNoNthWeekday(JiffDate.MIN, -1, JiffWeekday.MONDAY, outOfRange);
+        assertNoNthWeekday(JiffDate.MIN, -1, JiffWeekday.SUNDAY, outOfRange);
+    }
+
+    @IsTest
+    static void nthWeekdayHandlesTheLargestCounts() {
+        String outOfRange = 'parameter \'Unix epoch days\' is not in the required range of -4371587..=2932896';
+        String badCount = 'parameter \'nth weekday\' is not in the required range of -1043497..=1043497';
+        Integer weeks = 1043497;
+
+        Assert.areEqual(ymd(9999, 12, 27), JiffDate.MIN.nthWeekday(weeks, JiffWeekday.MONDAY));
+        assertNoNthWeekday(JiffDate.MIN, weeks + 1, JiffWeekday.MONDAY, badCount);
+        assertNoNthWeekday(JiffDate.MIN, 2147483647, JiffWeekday.MONDAY, badCount);
+        assertNoNthWeekday(JiffDate.MIN, -2147483647, JiffWeekday.MONDAY, badCount);
+
+        Assert.areEqual(ymd(-9999, 1, 5), JiffDate.MAX.nthWeekday(-weeks, JiffWeekday.FRIDAY));
+        assertNoNthWeekday(JiffDate.MAX, weeks - 1, JiffWeekday.FRIDAY, outOfRange);
+        assertNoNthWeekday(JiffDate.MAX, -weeks - 1, JiffWeekday.FRIDAY, badCount);
+
+        assertNoNthWeekday(ymd(2024, 3, 10), 0, JiffWeekday.MONDAY, badCount);
+    }
+
+    // ---- ISO week dates -------------------------------------------------
+
+    @IsTest
+    static void convertsToAnIsoWeekDate() {
+        JiffIsoWeekDate weekDate = ymd(1995, 1, 1).toIsoWeekDate();
+        Assert.areEqual(1994, weekDate.year());
+        Assert.areEqual(52, weekDate.week());
+        Assert.areEqual(JiffWeekday.SUNDAY, weekDate.weekday());
+
+        weekDate = ymd(1996, 12, 31).toIsoWeekDate();
+        Assert.areEqual(1997, weekDate.year());
+        Assert.areEqual(1, weekDate.week());
+        Assert.areEqual(JiffWeekday.TUESDAY, weekDate.weekday());
+
+        weekDate = ymd(2019, 12, 30).toIsoWeekDate();
+        Assert.areEqual(2020, weekDate.year());
+        Assert.areEqual(1, weekDate.week());
+        Assert.areEqual(JiffWeekday.MONDAY, weekDate.weekday());
+
+        weekDate = ymd(2024, 3, 9).toIsoWeekDate();
+        Assert.areEqual(2024, weekDate.year());
+        Assert.areEqual(10, weekDate.week());
+        Assert.areEqual(JiffWeekday.SATURDAY, weekDate.weekday());
+
+        weekDate = JiffDate.MIN.toIsoWeekDate();
+        Assert.areEqual(-9999, weekDate.year());
+        Assert.areEqual(1, weekDate.week());
+        Assert.areEqual(JiffWeekday.MONDAY, weekDate.weekday());
+
+        weekDate = JiffDate.MAX.toIsoWeekDate();
+        Assert.areEqual(9999, weekDate.year());
+        Assert.areEqual(52, weekDate.week());
+        Assert.areEqual(JiffWeekday.FRIDAY, weekDate.weekday());
+    }
+
+    @IsTest
+    static void convertsFromAnIsoWeekDate() {
+        Assert.areEqual(
+            ymd(1995, 1, 1),
+            JiffDate.fromIsoWeekDate(JiffIsoWeekDate.newInstance(1994, 52, JiffWeekday.SUNDAY))
+        );
+        Assert.areEqual(
+            ymd(1996, 12, 31),
+            JiffDate.fromIsoWeekDate(JiffIsoWeekDate.newInstance(1997, 1, JiffWeekday.TUESDAY))
+        );
+        Assert.areEqual(
+            ymd(2019, 12, 30),
+            JiffDate.fromIsoWeekDate(JiffIsoWeekDate.newInstance(2020, 1, JiffWeekday.MONDAY))
+        );
+        Assert.areEqual(
+            ymd(2024, 3, 9),
+            JiffDate.fromIsoWeekDate(JiffIsoWeekDate.newInstance(2024, 10, JiffWeekday.SATURDAY))
+        );
+        Assert.areEqual(
+            ymd(9999, 12, 31),
+            JiffDate.fromIsoWeekDate(JiffIsoWeekDate.newInstance(9999, 52, JiffWeekday.FRIDAY))
+        );
+        Assert.areEqual(JiffDate.MIN, JiffDate.fromIsoWeekDate(JiffIsoWeekDate.MIN));
+    }
+
+    // ---- platform Date --------------------------------------------------
+
+    @IsTest
+    static void convertsToAndFromAPlatformDate() {
+        Date leapDay = Date.newInstance(2024, 2, 29);
+        Assert.areEqual(ymd(2024, 2, 29), JiffDate.fromSystemDate(leapDay));
+        Assert.areEqual(leapDay, ymd(2024, 2, 29).toSystemDate());
+        Date converted = ymd(1970, 1, 1).toSystemDate();
+        Assert.areEqual(1970, converted.year());
+        Assert.areEqual(1, converted.month());
+        Assert.areEqual(1, converted.day());
+        Assert.areEqual(Date.newInstance(9999, 12, 31), JiffDate.MAX.toSystemDate());
+        Assert.areEqual(JiffDate.MAX, JiffDate.fromSystemDate(Date.newInstance(9999, 12, 31)));
+    }
+
+    @IsTest
+    static void platformDatesKeepTheirFieldsAcrossTheWholeRange() {
+        List<JiffDate> dates = new List<JiffDate>{
+            // The days on either side of the platform's switch from the Julian calendar.
+            ymd(1582, 10, 4),
+            ymd(1582, 10, 15),
+            ymd(0, 2, 29),
+            ymd(-4, 2, 29),
+            ymd(1500, 2, 28),
+            ymd(1500, 3, 1)
+        };
+        for (Long epochDay = -4371587L; epochDay <= 2932896L; epochDay += 9973) {
+            dates.add(JiffDate.fromEpochDay(epochDay));
+        }
+        for (JiffDate d : dates) {
+            if (d.year() == 1582 && d.month() == 10 && d.day() > 4 && d.day() < 15) {
+                continue;
+            }
+            Date converted = d.toSystemDate();
+            Assert.areEqual(d.year(), converted.year(), 'year of ' + d);
+            Assert.areEqual(d.month(), converted.month(), 'month of ' + d);
+            Assert.areEqual(d.day(), converted.day(), 'day of ' + d);
+            Assert.areEqual(d, JiffDate.fromSystemDate(converted), 'round trip of ' + d);
+        }
+    }
+
+    @IsTest
+    static void theDaysThePlatformCalendarSkipsCannotBeConverted() {
+        for (Integer day = 5; day <= 14; day++) {
+            try {
+                ymd(1582, 10, day).toSystemDate();
+                Assert.fail('expected 1582-10-' + day + ' to be rejected');
+            } catch (JiffException e) {
+                Assert.areEqual(
+                    'cannot convert `1582-10-' +
+                        String.valueOf(day).leftPad(2, '0') +
+                        '` to a system Date: the platform calendar skips from 1582-10-04 to 1582-10-15',
+                    e.getMessage()
+                );
+            }
+        }
+    }
+
+    @IsTest
+    static void aPlatformDateOutsideTheSupportedRangeIsRejected() {
+        try {
+            JiffDate.fromSystemDate(Date.newInstance(10000, 1, 1));
+            Assert.fail('expected year 10000 to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual(
+                'parameter \'year\' is not in the required range of -9999..=9999',
+                e.getMessage()
+            );
+        }
+        try {
+            JiffDate.fromSystemDate(null);
+            Assert.fail('expected a missing date to be rejected');
+        } catch (JiffException e) {
+            Assert.areEqual('the system Date to convert must not be null', e.getMessage());
+        }
+    }
 }
