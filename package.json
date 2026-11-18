@@ -1,0 +1,25 @@
+{
+    "name": "jiff-force",
+    "private": true,
+    "version": "0.1.0",
+    "description": "A port of Rust's jiff datetime library to Salesforce Apex",
+    "license": "Apache-2.0",
+    "type": "module",
+    "scripts": {
+        "test": "node tools/apexjvm/run.mjs",
+        "test:coverage": "node tools/apexjvm/run.mjs --coverage",
+        "test:aer": "aer test force-app --timezone America/Los_Angeles",
+        "transpile": "node tools/apexjvm/run.mjs --transpile-only",
+        "fmt": "prettier --write \"force-app/**/*.cls\" \"tools/**/*.mjs\"",
+        "fmt:check": "prettier --check \"force-app/**/*.cls\" \"tools/**/*.mjs\"",
+        "oracle": "cargo run --quiet --manifest-path oracle/Cargo.toml && node tools/gen-meta.mjs && prettier --write \"force-app/**/JiffOracle*Data.cls\"",
+        "oracle:check": "cargo run --quiet --manifest-path oracle/Cargo.toml -- --check",
+        "meta": "node tools/gen-meta.mjs",
+        "meta:check": "node tools/gen-meta.mjs --check"
+    },
+    "devDependencies": {
+        "@apexdevtools/apex-parser": "5.3.0",
+        "prettier": "^3.6.2",
+        "prettier-plugin-apex": "^2.4.0"
+    }
+}
