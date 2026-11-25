@@ -163,6 +163,89 @@ public class JiffZonedDateTime implements Comparable {
     }
 
     /**
+     * Parses a zoned datetime in the RFC 9557 format that `toString()` prints, such as
+     * `2024-07-04T08:39:00-04:00[America/New_York]`.
+     *
+     *     JiffZonedDateTime.parse('2024-07-04T08:39:00-04:00[America/New_York]');
+     *     JiffZonedDateTime.parse('2024-07-04T08:39:00[America/New_York]');   // offset optional
+     *     JiffZonedDateTime.parse('2024-07-04[America/New_York]');            // midnight
+     *     JiffZonedDateTime.parse('2024-07-04T12:39:00Z[America/New_York]');  // an instant
+     *
+     * The time zone annotation in square brackets is required. Without an offset, a clock
+     * reading in a gap or fold is resolved as `JiffDisambiguation.COMPATIBLE` does. With an
+     * offset, the offset must be one the zone has for that clock reading (which also picks
+     * between the two readings of a fold), or this throws; a `Z` instead names the instant
+     * and the zone only says how to show it. An offset written to the minute matches a zone
+     * offset that has seconds when it equals that offset rounded to the minute.
+     *
+     * Throws `JiffException` when the text is not valid or does not agree with the zone.
+     *
+     * Mirrors `impl FromStr for jiff::ZonedDateTime`. One detail differs: an offset written
+     * with explicit zero seconds (`-00:45:00`) is matched to the minute like `-00:45`, where
+     * Jiff then requires an exact match.
+     */
+    public static JiffZonedDateTime parse(String text) {
+        JiffPieces pieces = JiffPieces.parse(text);
+        JiffPiecesTimeZoneAnnotation annotation = pieces.timeZoneAnnotation();
+        if (annotation == null) {
+            throw new JiffException(
+                'failed to find time zone annotation in square brackets, ' +
+                'which is required for parsing a zoned datetime'
+            );
+        }
+        JiffTimeZone tz = annotation.toTimeZone();
+        JiffTime clock = pieces.toTime();
+        JiffDateTime dt = JiffDateTime.fromParts(
+            pieces.toDate(),
+            clock == null ? JiffTime.midnight() : clock
+        );
+        JiffPiecesOffset written = pieces.offset();
+        JiffAmbiguousZonedDateTime ambiguous;
+        if (written == null) {
+            ambiguous = tz.toAmbiguousZonedDateTime(dt);
+        } else if (written.isZulu()) {
+            ambiguous = JiffOffsetConflicts.resolve(
+                JiffOffsetConflict.ALWAYS_OFFSET,
+                dt,
+                JiffOffset.UTC,
+                tz
+            );
+        } else {
+            ambiguous = JiffOffsetConflicts.resolveWith(
+                JiffOffsetConflict.REJECT,
+                dt,
+                written.toNumericOffset(),
+                tz,
+                new MinuteEquality()
+            );
+        }
+        return ambiguous.compatible();
+    }
+
+    /**
+     * Text offsets usually stop at the minute. A written offset matches a zone offset with
+     * seconds when it equals that offset rounded to the minute, unless the text itself had
+     * seconds.
+     */
+    private class MinuteEquality implements JiffOffsetConflicts.Equality {
+        public Boolean isEqual(JiffOffset given, JiffOffset candidate) {
+            if (given.equals(candidate)) {
+                return true;
+            }
+            if (Math.mod(candidate.seconds(), 60) == 0 || Math.mod(given.seconds(), 60) != 0) {
+                return false;
+            }
+            try {
+                return given.equals(candidate.round(JiffUnit.MINUTE));
+            } catch (JiffException e) {
+                // Rounding the largest offsets can leave the range; then only an exact match
+                // counts, and that has already failed.
+                return false;
+            }
+        }
+    }
+
+    /**
      * Starts building a new zoned datetime from this one with some fields replaced:
      *
      *     JiffZonedDateTime zdt1 = JiffDate.newInstance(2024, 10, 31).inTz('America/New_York');
