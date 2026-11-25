@@ -23,6 +23,7 @@ mod offset;
 mod replay;
 mod rng;
 mod span;
+mod span_relative;
 mod text;
 mod time;
 mod timestamp;
@@ -162,6 +163,31 @@ const TOPICS: &[Topic] = &[
         "ZonedCalendar",
         zoned::CALENDAR_COLUMNS,
         zoned::calendar_rows,
+    ),
+    (
+        "SpanRound",
+        span_relative::ROUND_COLUMNS,
+        span_relative::round_rows,
+    ),
+    (
+        "SpanTotal",
+        span_relative::TOTAL_COLUMNS,
+        span_relative::total_rows,
+    ),
+    (
+        "SpanCompare",
+        span_relative::COMPARE_COLUMNS,
+        span_relative::compare_rows,
+    ),
+    (
+        "SpanArithmetic",
+        span_relative::ARITHMETIC_COLUMNS,
+        span_relative::arithmetic_rows,
+    ),
+    (
+        "DifferenceRound",
+        span_relative::DIFFERENCE_COLUMNS,
+        span_relative::difference_rows,
     ),
 ];
 

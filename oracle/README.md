@@ -63,6 +63,8 @@ when rounding, inputs that must be rejected) with seeded random cases.
 | `Offset`, `OffsetArithmetic`, `OffsetRound` | construction, printing, arithmetic, rounding |
 | `TimeZoneAmericas`, `TimeZoneEurope`, `TimeZonePacific` | every change of offset in six zones from 1970 through 2037: the offset either side, and civil datetimes in and around the gap or fold |
 | `TimeZoneOffset`, `TimeZoneCivil` | ordinary instants and civil datetimes in nine zones |
+| `SpanRound`, `SpanTotal`, `SpanCompare`, `SpanArithmetic` | span rounding, totals, comparison and arithmetic with no reference, with days taken as 24 hours, or relative to a date, a datetime or a zoned datetime (written `-`, `24h`, `D:<date>`, `DT:<datetime>`, `Z:<zone>:<instant>`) |
+| `DifferenceRound` | `until` and `since` with a largest unit, a smallest unit, an increment and a mode, for dates, datetimes, timestamps and zoned datetimes |
 | `ZonedSpan`, `ZonedDifference`, `ZonedRound`, `ZonedCalendar` | zoned datetime arithmetic, `until` for six largest units, rounding (including days of 23 and 25 hours), and the start/end of day, tomorrow/yesterday and month-end helpers, with inputs crowded within 36 hours of every change of offset |
 
 ### Time zones
