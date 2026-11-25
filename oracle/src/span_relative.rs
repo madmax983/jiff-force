@@ -117,6 +117,32 @@ fn relative(rng: &mut Rng) -> Result<Relative> {
     })
 }
 
+/// A relative reference for `spans`. A zoned reference is only used when
+/// adding each span to it, and their sum, lands in the period where the
+/// platform's zone data and Jiff's agree; otherwise the same clock reading is
+/// used as a civil datetime instead, which has no zone data to disagree on.
+fn relative_for(rng: &mut Rng, spans: &[Span]) -> Result<Relative> {
+    let rel = relative(rng)?;
+    let Relative::Zoned(_, zdt) = &rel else {
+        return Ok(rel);
+    };
+    let in_period = |span: Span| {
+        zdt.checked_add(span).map_or(true, |result| {
+            let second = result.timestamp().as_second();
+            (zone::FIRST_SECOND..zone::END_SECOND).contains(&second)
+        })
+    };
+    let mut candidates = spans.to_vec();
+    if let [a, b] = spans {
+        candidates.extend(a.checked_add((*b, zdt)).ok());
+    }
+    if candidates.into_iter().all(in_period) {
+        Ok(rel)
+    } else {
+        Ok(Relative::DateTime(zdt.datetime()))
+    }
+}
+
 /// A span of modest size, so that adding it to a reference stays in range
 /// most of the time and the results stay meaningful to check.
 fn span(rng: &mut Rng) -> Result<Span> {
@@ -139,7 +165,7 @@ pub fn round_rows(rng: &mut Rng) -> Result<Vec<String>> {
     let mut rows = Vec::new();
     while rows.len() < 500 {
         let span = span(rng)?;
-        let rel = relative(rng)?;
+        let rel = relative_for(rng, &[span])?;
         let smallest = usize::try_from(rng.range(0, 9))?;
         let largest = optional_unit(rng, smallest);
         let increment = *rng.pick(&INCREMENTS);
@@ -171,7 +197,7 @@ pub fn total_rows(rng: &mut Rng) -> Result<Vec<String>> {
     let mut rows = Vec::new();
     while rows.len() < 400 {
         let span = span(rng)?;
-        let rel = relative(rng)?;
+        let rel = relative_for(rng, &[span])?;
         let unit = usize::try_from(rng.range(0, 9))?;
         let mut options = SpanTotal::from(UNITS[unit].0);
         if let Some(r) = rel.get() {
@@ -199,7 +225,7 @@ pub fn compare_rows(rng: &mut Rng) -> Result<Vec<String>> {
             a.round(SpanRound::new().smallest(UNITS[unit].0).days_are_24_hours())
                 .or_else(|_| span(rng))?
         };
-        let rel = relative(rng)?;
+        let rel = relative_for(rng, &[a, b])?;
         let mut options = SpanCompare::from(b);
         if let Some(r) = rel.get() {
             options = options.relative(r);
@@ -219,7 +245,7 @@ pub fn arithmetic_rows(rng: &mut Rng) -> Result<Vec<String>> {
     while rows.len() < 400 {
         let a = span(rng)?;
         let b = span(rng)?;
-        let rel = relative(rng)?;
+        let rel = relative_for(rng, &[a, b])?;
         let add = rel.get().map_or_else(
             || a.checked_add(SpanArithmetic::from(b)),
             |r| a.checked_add(SpanArithmetic::from(b).relative(r)),
