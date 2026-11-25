@@ -722,6 +722,39 @@ public class JiffTime implements Comparable {
         return toSecondOfDay() * 31 + Math.mod(subsecValue, 1000003);
     }
 
+    // ---- strftime / strptime ------------------------------------------------
+
+    /**
+     * Parses a civil time from `input` according to the `strptime` format `format`. The
+     * conversion specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffTime.strptime('%I:%M%P', '4:30pm');   // 16:30:00
+     *
+     * Throws `JiffException` when the format is invalid, when the input does not match it, or
+     * when the input has a smaller unit without the larger ones, such as minutes without hours.
+     *
+     * Mirrors `jiff::civil::Time::strptime`.
+     */
+    public static JiffTime strptime(String format, String input) {
+        return JiffStrtime.parse(format, input).toTime();
+    }
+
+    /**
+     * Formats this time according to the `strftime` format `format`. The conversion
+     * specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffTime.newInstance(16, 30, 59, 0).strftime('%-I:%M%P');   // 4:30pm
+     *
+     * This never throws for a non-null format. A specifier that cannot be applied, such as
+     * `%Y` or `%z`, or an unknown one, is written out literally. To have such mistakes
+     * reported instead, use `JiffStrtime.format`.
+     *
+     * Mirrors `jiff::civil::Time::strftime`.
+     */
+    public String strftime(String format) {
+        return JiffStrtime.formatLenient(format, JiffBrokenDownTime.fromTime(this));
+    }
+
     /** Formats this time as ISO 8601, for example `15:22:45` or `15:22:45.123`. */
     public override String toString() {
         return JiffTemporal.printTime(this);

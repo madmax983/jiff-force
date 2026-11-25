@@ -921,6 +921,40 @@ public class JiffDate implements Comparable {
         return (yearValue * 13 + monthValue) * 32 + dayValue;
     }
 
+    // ---- strftime / strptime ------------------------------------------------
+
+    /**
+     * Parses a civil date from `input` according to the `strptime` format `format`. The
+     * conversion specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffDate.strptime('%m/%d/%y', '7/14/24');   // 2024-07-14
+     *
+     * Throws `JiffException` when the format is invalid, when the input does not match it, or
+     * when the input has no year, or nothing that finds the day in the year.
+     *
+     * Mirrors `jiff::civil::Date::strptime`.
+     */
+    public static JiffDate strptime(String format, String input) {
+        return JiffStrtime.parse(format, input).toDate();
+    }
+
+    /**
+     * Formats this date according to the `strftime` format `format`. The conversion
+     * specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffDate.newInstance(2024, 7, 15).strftime('%Y-%m-%d is a %A');
+     *     // 2024-07-15 is a Monday
+     *
+     * This never throws for a non-null format. A specifier that cannot be applied, such as
+     * `%H` or `%z`, or an unknown one, is written out literally. To have such mistakes
+     * reported instead, use `JiffStrtime.format`.
+     *
+     * Mirrors `jiff::civil::Date::strftime`.
+     */
+    public String strftime(String format) {
+        return JiffStrtime.formatLenient(format, JiffBrokenDownTime.fromDate(this));
+    }
+
     /** Formats this date as ISO 8601, for example `2024-02-29`. */
     public override String toString() {
         return JiffTemporal.printDate(this);
