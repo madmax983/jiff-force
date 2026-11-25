@@ -27,6 +27,7 @@ mod text;
 mod time;
 mod timestamp;
 mod zone;
+mod zoned;
 
 use std::path::PathBuf;
 
@@ -150,6 +151,18 @@ const TOPICS: &[Topic] = &[
     ),
     ("TimeZoneOffset", zone::OFFSET_COLUMNS, zone::offset_rows),
     ("TimeZoneCivil", zone::CIVIL_COLUMNS, zone::civil_rows),
+    ("ZonedSpan", zoned::SPAN_COLUMNS, zoned::span_rows),
+    (
+        "ZonedDifference",
+        zoned::DIFFERENCE_COLUMNS,
+        zoned::difference_rows,
+    ),
+    ("ZonedRound", zoned::ROUND_COLUMNS, zoned::round_rows),
+    (
+        "ZonedCalendar",
+        zoned::CALENDAR_COLUMNS,
+        zoned::calendar_rows,
+    ),
 ];
 
 fn main() -> Result<()> {

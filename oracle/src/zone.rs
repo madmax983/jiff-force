@@ -43,20 +43,20 @@ pub const ZONES: [&str; 9] = [
 ];
 
 /// 1970-01-01T00:00:00Z and 2038-01-01T00:00:00Z: the period covered.
-const FIRST_SECOND: i64 = 0;
-const END_SECOND: i64 = 2_145_916_800;
+pub const FIRST_SECOND: i64 = 0;
+pub const END_SECOND: i64 = 2_145_916_800;
 
 /// One change of a zone's offset.
-struct Transition {
-    second: i64,
-    before: Offset,
-    after: Offset,
+pub struct Transition {
+    pub second: i64,
+    pub before: Offset,
+    pub after: Offset,
 }
 
 /// The transitions of `zone` within the period at which its offset changes.
 /// Transitions that only change the abbreviation or the daylight saving flag
 /// are of no interest here: the port cannot see them.
-fn transitions(zone: &TimeZone) -> Result<Vec<Transition>> {
+pub fn transitions(zone: &TimeZone) -> Result<Vec<Transition>> {
     let mut found = Vec::new();
     for transition in zone.following(Timestamp::from_second(FIRST_SECOND)?) {
         let second = transition.timestamp().as_second();
