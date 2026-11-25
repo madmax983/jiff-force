@@ -25,6 +25,10 @@ public class JiffSignedDuration implements Comparable {
     private static final Double NANOS_PER_MILLI_D = 1000000;
     private static final Double MILLIS_PER_SEC_D = 1000;
     private static final Double HALF = 0.5;
+    private static final Double ZERO_D = 0;
+    // Jiff prints these bounds as floats: `i64::MIN as f64` and `i64::MAX as f64` are -2^63
+    // and 2^63, and this is how Rust displays them.
+    private static final String FLOAT_SECONDS_RANGE = '-9223372036854776000..=9223372036854776000';
 
     /** A duration of zero length. */
     public static final JiffSignedDuration ZERO = new JiffSignedDuration(0L, 0);
@@ -112,33 +116,92 @@ public class JiffSignedDuration implements Comparable {
 
     /**
      * Creates a duration from a fractional number of seconds, rounded to the nearest
-     * nanosecond. Throws if the value is not finite or does not fit.
+     * nanosecond with ties rounding away from zero.
+     *
+     * Throws if the value is NaN or infinite, or if it lies outside `-2^63..=2^63` seconds.
+     * As in Jiff, exactly `2^63` is accepted and gives `Long.MAX` seconds, because that is the
+     * closest a 64 bit float gets to the largest whole number of seconds.
+     *
+     * Mirrors `SignedDuration::try_from_secs_f64`.
      */
     public static JiffSignedDuration fromSecsDouble(Double secs) {
-        // NaN is the only value that is not equal to itself.
-        if (secs != secs) {
-            throw new JiffException('could not convert non-finite seconds to signed duration');
+        if (!isFinite(secs)) {
+            throw nonFinite();
         }
+        // `LONG_MAX` is not representable as a Double; the conversion rounds it up to 2^63,
+        // which is the bound Jiff uses too (`i64::MAX as f64`).
         Double bound = JiffMath.LONG_MAX;
-        if (secs < -bound || secs > bound) {
+        // Phrased positively, as in Jiff: every comparison with NaN is false, so a NaN that
+        // somehow got past the test above still cannot pass this one.
+        if (!(secs >= -bound && secs <= bound)) {
             throw new JiffException(
                 'parameter \'floating point seconds\' is not in the required range of ' +
-                    JiffMath.LONG_MIN +
-                    '..=' +
-                    JiffMath.LONG_MAX
+                FLOAT_SECONDS_RANGE
             );
+        }
+        // At the bounds the value is a whole number of seconds that a Long may not hold.
+        // Rust's `as i64` saturates there. `Double.longValue()` is not asked, because what it
+        // returns for an out of range value differs between Apex runtimes.
+        if (secs >= bound) {
+            return new JiffSignedDuration(JiffMath.LONG_MAX, 0);
+        }
+        if (secs <= -bound) {
+            return new JiffSignedDuration(JiffMath.LONG_MIN, 0);
         }
         Long whole = secs.longValue();
         Double wholeAsDouble = whole;
+        // Exact: the fractional part of a Double is itself a Double.
         Double scaled = (secs - wholeAsDouble) * NANOS_PER_SEC_D;
-        // Round half away from zero, as Rust's `f64::round` does.
-        Double nudged = scaled < 0 ? scaled - HALF : scaled + HALF;
-        Long n = nudged.longValue();
+        Long n = roundHalfAwayFromZero(scaled);
         if (n == 1000000000L || n == -1000000000L) {
             whole = JiffMath.checkedAdd(whole, n < 0 ? -1L : 1L, 'signed duration seconds');
             n = 0L;
         }
         return new JiffSignedDuration(whole, n.intValue());
+    }
+
+    /**
+     * Whether `value` is neither NaN nor an infinity.
+     *
+     * A finite value minus itself is exactly zero, while NaN and both infinities give NaN,
+     * which equals zero on no runtime. The obvious `value != value` test for NaN is not
+     * used: some Apex runtimes treat NaN as equal to itself.
+     */
+    private static Boolean isFinite(Double value) {
+        return (value - value) == ZERO_D;
+    }
+
+    /** Whether `value` is positive or negative zero, however the runtime compares the two. */
+    private static Boolean isZeroDouble(Double value) {
+        return value == ZERO_D || -value == ZERO_D;
+    }
+
+    private static JiffException nonFinite() {
+        return new JiffException(
+            'could not convert non-finite floating point seconds to signed duration ' +
+            '(floating point seconds must be finite)'
+        );
+    }
+
+    /**
+     * Rounds to the nearest whole number, with ties away from zero, as Rust's `f64::round`
+     * does. `value` must be well inside the range of a Long.
+     *
+     * Adding a half and truncating is not equivalent: for the largest Double below one half
+     * the sum is not representable and rounds up to exactly one.
+     */
+    private static Long roundHalfAwayFromZero(Double value) {
+        Long truncated = value.longValue();
+        Double truncatedAsDouble = truncated;
+        // Exact, for the same reason as above.
+        Double rest = value - truncatedAsDouble;
+        if (rest >= HALF) {
+            return truncated + 1;
+        }
+        if (rest <= -HALF) {
+            return truncated - 1;
+        }
+        return truncated;
     }
 
     /** Internal: builds a duration from a wide nanosecond count. */
@@ -338,16 +401,50 @@ public class JiffSignedDuration implements Comparable {
         return new JiffSignedDuration(s, n.intValue());
     }
 
+    /**
+     * Multiplies by a fractional factor, rounding to the nearest nanosecond.
+     *
+     * The arithmetic is done on 64 bit floats, as in Jiff, so it is exact only while the
+     * duration and the result stay within about 104 days (2^53 nanoseconds). Throws if the
+     * factor is NaN or infinite, or the result does not fit.
+     *
+     * Mirrors `SignedDuration::mul_f64`.
+     */
     public JiffSignedDuration multiplyDouble(Double factor) {
         return fromSecsDouble(factor * asSecsDouble());
     }
 
+    /**
+     * Divides by a fractional divisor, rounding to the nearest nanosecond.
+     *
+     * Throws if the divisor is zero or NaN, or the result does not fit. Jiff fails for a zero
+     * divisor too (the quotient would be infinite or NaN, which is not a duration), so this
+     * reports Jiff's error instead of letting the platform's own division by zero exception
+     * escape. Dividing by an infinity gives zero, as in Jiff.
+     *
+     * Mirrors `SignedDuration::div_f64`.
+     */
     public JiffSignedDuration divideDouble(Double divisor) {
+        if (isZeroDouble(divisor)) {
+            throw nonFinite();
+        }
         return fromSecsDouble(asSecsDouble() / divisor);
     }
 
-    /** How many times `other` goes into this duration, as a fraction. */
+    /**
+     * How many times `other` goes into this duration, as a fraction.
+     *
+     * Throws if `other` is zero. This is a deliberate difference from Jiff, whose
+     * `div_duration_f64` returns an infinity there (or NaN for zero divided by zero). Apex
+     * cannot return those portably: dividing a Double by zero throws a platform exception on
+     * some runtimes, and NaN does not compare the same way on all of them.
+     *
+     * Mirrors `SignedDuration::div_duration_f64`.
+     */
     public Double divDuration(JiffSignedDuration other) {
+        if (other.isZero()) {
+            throw new JiffException('division of a signed duration by a zero duration');
+        }
         return asNanosDouble() / other.asNanosDouble();
     }
 

@@ -236,23 +236,28 @@ public class JiffSpan {
         if (factor == 1) {
             return this;
         }
-        Long absFactor = JiffMath.checkedNeg(factor < 0 ? factor : -factor, 'span multiple');
-        List<Long> next = new List<Long>();
-        for (Integer i = 0; i < UNIT_COUNT; i++) {
+        // Only `Long.MIN` has no absolute value. Jiff reports it as a multiple outside the
+        // range of every unit (`rhs.checked_abs().ok_or_else(b::SpanMultiple::error)`).
+        if (factor == JiffMath.LONG_MIN) {
+            throw JiffMath.rangeError('span multiple', -JiffMath.LONG_MAX, JiffMath.LONG_MAX);
+        }
+        Long absFactor = factor < 0 ? -factor : factor;
+        List<Long> next = magnitudes.clone();
+        // From years down to nanoseconds, as Jiff does, so that when several units overflow
+        // the error names the largest of them.
+        for (Integer i = UNIT_COUNT - 1; i >= 0; i--) {
             Long magnitude = magnitudes.get(i);
             if (magnitude == 0) {
-                next.add(0L);
                 continue;
             }
             Long max = LIMITS.get(i);
-            String what = JiffMath.plural(UNITS.get(i));
             if (
                 JiffMath.greaterThan(absFactor, max) ||
                 JiffMath.greaterThan(magnitude, max / absFactor)
             ) {
-                throw JiffMath.rangeError(what, -max, max);
+                throw JiffMath.rangeError(JiffMath.plural(UNITS.get(i)), -max, max);
             }
-            next.add(magnitude * absFactor);
+            next.set(i, magnitude * absFactor);
         }
         return new JiffSpan(factor < 0 ? -sign : sign, next);
     }
@@ -423,7 +428,12 @@ public class JiffSpan {
     /** `secs * perSecond + extra`, or a range error for `unit` if that overflows its limit. */
     private static Long scaled(Long secs, Long perSecond, Long extra, JiffUnit unit) {
         Long max = LIMITS.get(unit.ordinal());
-        if (JiffMath.greaterThan(JiffMath.abs(secs), (max - JiffMath.abs(extra)) / perSecond)) {
+        // `extra` is less than a second in magnitude, so its absolute value is safe to take.
+        // `secs` may be `Long.MIN`, which has none, so it is compared against both ends of
+        // the range instead. The two never differ in sign, so the sum is within `max`
+        // exactly when `secs` is within `bound`.
+        Long bound = (max - JiffMath.abs(extra)) / perSecond;
+        if (JiffMath.greaterThan(secs, bound) || JiffMath.lessThan(secs, -bound)) {
             throw JiffMath.rangeError(JiffMath.plural(unit), -max, max);
         }
         return secs * perSecond + extra;
