@@ -47,8 +47,8 @@
  * The supported range is that of `JiffTimestamp`. Time zone behaviour comes from the
  * platform; see `JiffTimeZone`. Instances are immutable.
  *
- * Not ported yet: parsing, `strftime` and `strptime`, and the forms of `until` and `since`
- * that round their result.
+ * `strftime` and `strptime` format and parse with `printf`-style format strings; see
+ * `JiffStrtime`. `JiffRfc2822` reads and writes the RFC 2822 format of email.
  *
  * Mirrors `jiff::ZonedDateTime`.
  */
@@ -1087,6 +1087,44 @@ public class JiffZonedDateTime implements Comparable {
     /** A hash of the instant, consistent with `equals`. */
     public Integer hashCode() {
         return ts.hashCode();
+    }
+
+    // ---- strftime / strptime ------------------------------------------------
+
+    /**
+     * Parses a zoned datetime from `input` according to the `strptime` format `format`. The
+     * conversion specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffZonedDateTime.strptime('%F %H:%M %:Q', '2024-07-14 21:14 America/New_York');
+     *     // 2024-07-14T21:14:00-04:00[America/New_York]
+     *
+     * Throws `JiffException` when the format is invalid, when the input does not match it, or
+     * when the input has neither an offset (`%z`) nor an IANA time zone identifier (`%Q`), or
+     * the two disagree.
+     *
+     * Without `%Q` the zoned datetime has a fixed offset time zone, which does not follow
+     * daylight saving time in arithmetic. Use `%Q` (or `%:Q`) to round trip the time zone.
+     *
+     * Mirrors `jiff::ZonedDateTime::strptime`.
+     */
+    public static JiffZonedDateTime strptime(String format, String input) {
+        return JiffStrtime.parse(format, input).toZonedDateTime();
+    }
+
+    /**
+     * Formats this zoned datetime according to the `strftime` format `format`. The conversion
+     * specifiers are listed in `JiffStrtime`.
+     *
+     *     zdt.strftime('%a %b %e %I:%M:%S %p %Z %Y');   // Mon Jul 15 04:24:59 PM EDT 2024
+     *
+     * This never throws for a non-null format. A specifier that cannot be applied, such as
+     * a `%` at the very end, or an unknown one, is written out literally. To have such mistakes
+     * reported instead, use `JiffStrtime.format`.
+     *
+     * Mirrors `jiff::ZonedDateTime::strftime`.
+     */
+    public String strftime(String format) {
+        return JiffStrtime.formatLenient(format, JiffBrokenDownTime.fromZonedDateTime(this));
     }
 
     /**

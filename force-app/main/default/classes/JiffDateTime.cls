@@ -882,6 +882,41 @@ public class JiffDateTime implements Comparable {
         return dateValue.hashCode() * 31 + timeValue.hashCode();
     }
 
+    // ---- strftime / strptime ------------------------------------------------
+
+    /**
+     * Parses a civil datetime from `input` according to the `strptime` format `format`. The
+     * conversion specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffDateTime.strptime('%F %H:%M', '2024-07-14 21:14');   // 2024-07-14T21:14:00
+     *
+     * Throws `JiffException` when the format is invalid, when the input does not match it, or
+     * when the input lacks a date; a missing time is midnight.
+     *
+     * Mirrors `jiff::civil::DateTime::strptime`.
+     */
+    public static JiffDateTime strptime(String format, String input) {
+        return JiffStrtime.parse(format, input).toDateTime();
+    }
+
+    /**
+     * Formats this datetime according to the `strftime` format `format`. The conversion
+     * specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffDateTime.newInstance(2024, 7, 15, 16, 24, 59, 0)
+     *         .strftime('%A, %B %e, %Y at %H:%M:%S');
+     *     // Monday, July 15, 2024 at 16:24:59
+     *
+     * This never throws for a non-null format. A specifier that cannot be applied, such as
+     * `%z` or `%Z`, or an unknown one, is written out literally. To have such mistakes
+     * reported instead, use `JiffStrtime.format`.
+     *
+     * Mirrors `jiff::civil::DateTime::strftime`.
+     */
+    public String strftime(String format) {
+        return JiffStrtime.formatLenient(format, JiffBrokenDownTime.fromDateTime(this));
+    }
+
     /** Formats this datetime as ISO 8601, for example `2024-02-29T15:22:45.5`. */
     public override String toString() {
         return JiffTemporal.printDateTime(this);

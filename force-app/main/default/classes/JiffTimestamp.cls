@@ -572,6 +572,41 @@ public class JiffTimestamp implements Comparable {
             .intValue();
     }
 
+    // ---- strftime / strptime ------------------------------------------------
+
+    /**
+     * Parses a timestamp from `input` according to the `strptime` format `format`. The
+     * conversion specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffTimestamp.strptime('%F %H:%M %:z', '2024-07-14 21:14 -04:00');
+     *     // 2024-07-15T01:14:00Z
+     *
+     * Throws `JiffException` when the format is invalid, when the input does not match it, or
+     * when the input has neither a Unix timestamp (`%s`) nor a datetime with an offset.
+     *
+     * Mirrors `jiff::Timestamp::strptime`.
+     */
+    public static JiffTimestamp strptime(String format, String input) {
+        return JiffStrtime.parse(format, input).toTimestamp();
+    }
+
+    /**
+     * Formats this timestamp according to the `strftime` format `format`. The conversion
+     * specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffTimestamp.fromSecond(86400L).strftime('%a %b %e %I:%M:%S %p UTC %Y');
+     *     // Fri Jan  2 12:00:00 AM UTC 1970
+     *
+     * This never throws for a non-null format. A specifier that cannot be applied, such as
+     * `%Z` (a timestamp has no time zone), or an unknown one, is written out literally. To
+     * have such mistakes reported instead, use `JiffStrtime.format`.
+     *
+     * Mirrors `jiff::Timestamp::strftime`.
+     */
+    public String strftime(String format) {
+        return JiffStrtime.formatLenient(format, JiffBrokenDownTime.fromTimestamp(this));
+    }
+
     /** Formats this instant as an RFC 3339 timestamp in UTC, for example `2024-06-19T19:22:45Z`. */
     public override String toString() {
         return JiffTemporal.printTimestamp(this);
