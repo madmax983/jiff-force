@@ -26,6 +26,18 @@ const STRING_STATICS = new Set(["join", "fromchararray", "isblank", "isempty", "
 const MATH_STATICS = new Set(["mod"]);
 const MATH_ALLOWED = new Set(["abs", "min", "max", "mod"]);
 
+// The only statics of the wrapper types that the subset may call. Java's
+// wrapper classes have many more (String.format, Integer.parseInt,
+// Long.MAX_VALUE, ...) that would compile here and fail, or silently differ, in
+// Apex.
+const WRAPPER_STATICS = new Map([
+    ["string", new Set(["valueof", "join", "fromchararray", "isblank", "isempty", "isnotblank"])],
+    ["integer", new Set(["valueof"])],
+    ["long", new Set(["valueof"])],
+    ["double", new Set(["valueof"])],
+    ["boolean", new Set(["valueof"])],
+]);
+
 // Instance methods that exist on Apex system types but not (or not with the
 // same meaning) on the Java type the value is mapped to. These are routed by
 // name to `Rt.<name>(receiver, args...)`, so jiff-force classes must not
@@ -403,6 +415,25 @@ export function transpile(fileName, source, enums, typeNames = new Set()) {
         }
     }
 
+    /**
+     * Whether a literal is, possibly negated, the whole initializer of a
+     * `Double` variable or constant: the one place a decimal literal is
+     * allowed, because Apex converts it to a Double there and nowhere else.
+     */
+    function isDoubleInitializer(literal) {
+        let n = literal.parentCtx; // primary
+        n = n && n.parentCtx; // PrimaryExpression
+        if (n && n.parentCtx && n.parentCtx.constructor.name === "PreOpExpressionContext") {
+            n = n.parentCtx;
+        }
+        const declarator = n && n.parentCtx;
+        if (!declarator || rn(declarator) !== "variableDeclarator") return false;
+        const declaration = declarator.parentCtx && declarator.parentCtx.parentCtx;
+        if (!declaration) return false;
+        const type = declaration.children.find((c) => !isTerminal(c) && rn(c) === "typeRef");
+        return type !== undefined && type.getText().toLowerCase() === "double";
+    }
+
     function emitModifier(node) {
         const first = node.children[0];
         const ws = lead(node.start.tokenIndex);
@@ -625,6 +656,14 @@ export function transpile(fileName, source, enums, typeNames = new Set()) {
         // expression ("." | "?.") (dotMethodCall | anyId)
         const [recv, dot, member] = node.children;
         if (dot.getText() !== ".") fail(node, "safe navigation (?.) is not supported");
+        const receiverType = recv.getText().toLowerCase();
+        if (WRAPPER_STATICS.has(receiverType)) {
+            const isCall = !isTerminal(member) && rn(member) === "dotMethodCall";
+            const memberName = (isCall ? member.children[0] : member).getText();
+            if (!isCall || !WRAPPER_STATICS.get(receiverType).has(memberName.toLowerCase())) {
+                fail(node, `${recv.getText()}.${memberName} is not in the supported subset`);
+            }
+        }
         if (isTerminal(member) || rn(member) !== "dotMethodCall") return children(node);
         const name = member.children[0].getText();
         const lower = name.toLowerCase();
@@ -717,6 +756,22 @@ export function transpile(fileName, source, enums, typeNames = new Set()) {
                 return emitWhenControl(node);
             case "creator":
                 return emitCreator(node);
+            case "literal": {
+                const text = node.getText();
+                if (/^0\d+[lL]?$/.test(text)) {
+                    fail(
+                        node,
+                        `integer literal '${text}' has a leading zero: Apex reads it as decimal, Java as octal`,
+                    );
+                }
+                if (/^\d*\.\d+$/.test(text) && !isDoubleInitializer(node)) {
+                    fail(
+                        node,
+                        `'${text}' is a Decimal in Apex; assign it to a Double variable and use the variable (rule 9)`,
+                    );
+                }
+                return children(node);
+            }
             case "id":
             case "anyId": {
                 const text = node.getText();

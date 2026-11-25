@@ -23,6 +23,12 @@ public final class Assert {
     }
 
     public static void areNotEqual(Object notExpected, Object actual, String message) {
+        // Values of different types are never "equal" here, so a mismatch would make
+        // this pass without testing anything; Apex would compare the values.
+        if (notExpected != null && actual != null && notExpected.getClass() != actual.getClass()) {
+            fail(prefix(message) + "areNotEqual operands have different types: "
+                + show(notExpected) + " vs " + show(actual));
+        }
         if (same(notExpected, actual)) {
             fail(prefix(message) + "Same value: " + show(actual));
         }

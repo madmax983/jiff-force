@@ -8,6 +8,7 @@
     "scripts": {
         "test": "node tools/apexjvm/run.mjs",
         "test:coverage": "node tools/apexjvm/run.mjs --coverage",
+        "test:harness": "node --test tools/apexjvm/test/*.test.mjs",
         "test:aer": "aer test force-app --timezone America/Los_Angeles",
         "transpile": "node tools/apexjvm/run.mjs --transpile-only",
         "fmt": "prettier --write \"force-app/**/*.cls\" \"tools/**/*.mjs\"",

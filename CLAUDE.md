@@ -28,6 +28,7 @@ npm run fmt                 # prettier-plugin-apex; also the only check that use
 npm run fmt:check
 npm run meta                # create missing *.cls-meta.xml files
 npm run test:coverage       # line coverage via JaCoCo, gate at 85%
+npm run test:harness        # the translator's own regression tests
 ```
 
 Before every commit: `npm run meta && npm run fmt && npm test`, then run the test classes you
@@ -93,7 +94,8 @@ Apex and Java; do not work around them.
 8. **No properties** (`{ get; set; }`), no arrays (`Integer[]`), no `?.`, no `??`, no SOQL/DML,
    no `switch on` over a `Long`, no type-pattern `when` clauses.
 9. **`Decimal` is not used.** A bare `0.5` literal is a Decimal in Apex; assign it to a `Double`
-   variable first and do arithmetic on the variable.
+   variable first and do arithmetic on the variable. The harness rejects a decimal literal
+   anywhere else, and integer literals with a leading zero (`010` is ten in Apex, eight in Java).
 10. **Only call system methods the harness shims** (`tools/apexjvm/runtime/jiffapex/`). The
     shims expose methods that really exist in Apex with the same signature. If you need another
     system method, add it to the shim *only if you are certain of its Apex behaviour*, and add a
@@ -103,6 +105,8 @@ Apex and Java; do not work around them.
       containsIgnoreCase substringBefore substringAfter removeStart removeEnd intValue
       longValue doubleValue`.
     - Java-only String methods (`isEmpty()`, `strip()`, `matches()`, ...) are rejected.
+    - Statics on `String`, `Integer`, `Long`, `Double` and `Boolean` are limited to `valueOf`
+      (and `join`, `fromCharArray`, `isBlank`, `isEmpty`, `isNotBlank` on `String`).
 11. **Inner classes cannot have static members** (an Apex rule). Use top-level classes.
 12. **Exceptions:** throw only `JiffException`. Never catch platform exceptions as control flow
     (validate input first, e.g. check digits before `Integer.valueOf`).

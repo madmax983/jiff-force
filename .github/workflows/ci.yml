@@ -46,6 +46,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm ci
+      - run: npm run test:harness
       - run: node tools/apexjvm/fetch-jacoco.mjs
       - run: npm run test:coverage
 
