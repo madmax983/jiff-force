@@ -82,7 +82,9 @@ The same conversions exist on the types themselves for values that are not in a 
 
 ## Status
 
-This is a port in progress, tracking Jiff 1.0.0. It has not yet been compiled on a Salesforce org.
+Every area of Jiff 1.0.0 that makes sense on the platform is ported. The code has not yet been
+compiled on a Salesforce org; see [docs/HANDOFF.md](docs/HANDOFF.md) for what that and the other
+open items involve.
 
 | Area | State |
 | --- | --- |
@@ -99,9 +101,8 @@ This is a port in progress, tracking Jiff 1.0.0. It has not yet been compiled on
 | Converting platform `Date`, `Time`, `Datetime` values, and record fields (`JiffRecords`) | Done |
 | Span arithmetic, comparison, totals and rounding relative to a date (`JiffSpanRound`, `JiffSpanRelativeTo`) | Done |
 | `until`/`since` with rounding options (`JiffDifference`) | Done; checked against Jiff along with span rounding, totals and comparison |
-| `strftime`/`strptime`, RFC 2822 | Not started |
+| `strftime`/`strptime` (`JiffStrtime`, `JiffBrokenDownTime`), RFC 2822 and RFC 9110 (`JiffRfc2822`) | Done; checked against 1,200 cases from Jiff |
 
-Work is paused. [docs/HANDOFF.md](docs/HANDOFF.md) has the detailed state and the remaining plan.
 
 ## How it maps to Jiff
 
