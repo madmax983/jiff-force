@@ -868,6 +868,61 @@ public class JiffZonedDateTime implements Comparable {
     }
 
     /**
+     * The span from this zoned datetime until `other`, with the units and rounding `options`
+     * ask for.
+     *
+     * The smallest unit defaults to `NANOSECOND`, and the largest to the bigger of `HOUR` and
+     * the smallest unit. When the smallest unit is bigger than a nanosecond, or the increment
+     * is not 1, the difference is rounded as `JiffSpan.round` does, measured from this zoned
+     * datetime, so a day containing a change of offset has its real length.
+     *
+     *     // 2024-03-10 is 23 hours long in New York.
+     *     JiffZonedDateTime zdt1 = JiffDate.newInstance(2024, 3, 10).inTz('America/New_York');
+     *     JiffZonedDateTime zdt2 = JiffDate.newInstance(2024, 3, 10).at(23, 30, 0, 0).inTz('America/New_York');
+     *     zdt1.until(zdt2);   // PT22H30M
+     *     zdt1.until(zdt2, new JiffDifference().smallest(JiffUnit.DAY).mode(JiffRoundMode.HALF_EXPAND));
+     *     // P1D
+     *
+     * Throws when the time zones differ and the largest unit is a day or bigger, the
+     * increment is not valid for the smallest unit, the largest unit is smaller than the
+     * smallest, or the result does not fit.
+     *
+     * Mirrors `ZonedDateTime::until` with a `ZonedDateTimeDifference`.
+     */
+    public JiffSpan until(JiffZonedDateTime other, JiffDifference options) {
+        return difference(other, options, false);
+    }
+
+    /**
+     * The span from `other` until this zoned datetime, with the units and rounding `options`
+     * ask for. This is `until(other, options)` before rounding, negated; the rounding is then
+     * measured from this zoned datetime. See `until(JiffZonedDateTime, JiffDifference)`.
+     *
+     * Mirrors `ZonedDateTime::since` with a `ZonedDateTimeDifference`.
+     */
+    public JiffSpan since(JiffZonedDateTime other, JiffDifference options) {
+        return difference(other, options, true);
+    }
+
+    private JiffSpan difference(JiffZonedDateTime other, JiffDifference options, Boolean negate) {
+        JiffDifference config = options == null ? new JiffDifference() : options;
+        JiffUnit smallest = config.getSmallest() == null
+            ? JiffUnit.NANOSECOND
+            : config.getSmallest();
+        JiffUnit largest = config.getLargest() == null
+            ? JiffMath.largerOf(smallest, JiffUnit.HOUR)
+            : config.getLargest();
+        JiffSpan span = until(other, largest);
+        return JiffSpanRelative.roundDifference(
+            negate ? span.negate() : span,
+            config,
+            smallest,
+            JiffSpanRelativeTo.fromZonedDateTime(this),
+            false
+        );
+    }
+
+    /**
      * The exact length of time from this zoned datetime until `other`. It is negative when
      * `other` is earlier. This never fails, and the time zones play no part.
      *

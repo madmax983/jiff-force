@@ -432,8 +432,14 @@ private class JiffZonedDateTimeArithmeticTest {
         Assert.areEqual(new JiffSpan().hours(109031).minutes(30), later.since(earlier));
         Assert.areEqual(new JiffSpan().hours(-109031).minutes(-30), earlier.since(later));
         // A null largest unit means the default.
-        Assert.areEqual(new JiffSpan().hours(109031).minutes(30), earlier.until(later, null));
-        Assert.areEqual(new JiffSpan().hours(109031).minutes(30), later.since(earlier, null));
+        Assert.areEqual(
+            new JiffSpan().hours(109031).minutes(30),
+            earlier.until(later, (JiffUnit) null)
+        );
+        Assert.areEqual(
+            new JiffSpan().hours(109031).minutes(30),
+            later.since(earlier, (JiffUnit) null)
+        );
     }
 
     @IsTest
