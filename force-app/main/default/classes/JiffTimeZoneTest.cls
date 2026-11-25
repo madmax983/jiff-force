@@ -1142,6 +1142,11 @@ private class JiffTimeZoneTest {
         JiffTimestamp distant = utc(9999, 12, 1, 0);
         assertPrevious(zone('America/New_York'), distant, utc(9999, 11, 7, 6));
         assertNext(zone('America/New_York'), distant, null);
+        // A start past the scan horizon of 2100 still finds the yearly rule's next change.
+        assertNext(zone('America/New_York'), utc(2101, 5, 31, 0), utc(2101, 11, 6, 6));
+        assertNext(zone('America/New_York'), utc(2500, 1, 1, 0), utc(2500, 3, 14, 7));
+        assertNext(zone('America/New_York'), utc(9999, 1, 1, 0), utc(9999, 3, 14, 7));
+        assertPrevious(zone('America/New_York'), utc(2500, 1, 1, 0), utc(2499, 11, 1, 6));
         assertPrevious(zone('Australia/Tasmania'), distant, utc(9999, 10, 2, 16));
         assertNext(zone('Australia/Tasmania'), distant, null);
         assertPrevious(zone('Europe/Dublin'), distant, utc(9999, 10, 31, 1));

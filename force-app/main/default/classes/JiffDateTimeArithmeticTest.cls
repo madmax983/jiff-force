@@ -808,6 +808,17 @@ private class JiffDateTimeArithmeticTest {
         String outOfRange = 'ERR:' + ERROR_TEXT.get('nanos');
         Assert.areEqual(outOfRange, tryUntil(start, tooFar, JiffUnit.NANOSECOND));
         Assert.areEqual(outOfRange, tryUntil(tooFar, start, JiffUnit.NANOSECOND));
+        // Further out too: a sum that wrapped around a Long would land on a legal negative
+        // count here, where one past the limit wraps to the one value that is still rejected.
+        List<JiffDateTime> furtherOut = new List<JiffDateTime>{
+            civil(2292, 4, 10, 23, 47, 16, 854775809),
+            civil(2292, 4, 10, 23, 47, 16, 999999999),
+            civil(2292, 4, 10, 23, 47, 17, 0)
+        };
+        for (JiffDateTime far : furtherOut) {
+            Assert.areEqual(outOfRange, tryUntil(start, far, JiffUnit.NANOSECOND), 'until ' + far);
+            Assert.areEqual(outOfRange, tryUntil(far, start, JiffUnit.NANOSECOND), 'from ' + far);
+        }
         try {
             JiffSpan unexpected = start.since(tooFar, JiffUnit.NANOSECOND);
             Assert.fail('expected the difference not to fit, but got ' + unexpected);

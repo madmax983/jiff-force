@@ -118,10 +118,24 @@ private class JiffDateTimeTest {
         );
         Assert.areEqual(JiffDateTime.MIN, JiffDateTime.fromEpochSecond(-377705116800L, 0));
         Assert.areEqual(JiffDateTime.MAX, JiffDateTime.fromEpochSecond(253402300799L, 999999999));
-        for (Long second = -377705116800L; second <= 253402300799L; second += 86028121L * 997) {
+        // About a thousand samples over every century and time of day, each checked against a
+        // value built from the separately tested epoch day and plain arithmetic.
+        for (Long second = -377705116800L; second <= 253402300799L; second += 86028121L * 7) {
+            Long epochDay = JiffMath.floorDiv(second, 86400L);
+            Integer secondOfDay = (second - epochDay * 86400L).intValue();
+            JiffDate d = JiffDate.fromEpochDay(epochDay);
+            JiffDateTime expected = JiffDateTime.newInstance(
+                d.year(),
+                d.month(),
+                d.day(),
+                secondOfDay / 3600,
+                Math.mod(secondOfDay / 60, 60),
+                Math.mod(secondOfDay, 60),
+                7
+            );
             JiffDateTime dt = JiffDateTime.fromEpochSecond(second, 7);
+            Assert.areEqual(expected, dt, 'from epoch second ' + second);
             Assert.areEqual(second, dt.toEpochSecond(), 'round trip of ' + dt);
-            Assert.areEqual(7, dt.subsecNanosecond());
         }
     }
 
