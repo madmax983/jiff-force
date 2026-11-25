@@ -405,8 +405,8 @@ public class JiffTimestamp implements Comparable {
      * time zone to say how long a day is. Asking for a small unit can also throw: a span
      * cannot hold more than about 292 years of nanoseconds.
      *
-     * Jiff's `TimestampDifference` can also round the result. It does so by rounding the
-     * span, so that option belongs with span rounding and is not offered here.
+     * Nothing is rounded here; `until(JiffTimestamp, JiffDifference)` can also round the
+     * result.
      */
     public JiffSpan until(JiffTimestamp other, JiffUnit largest) {
         if (largest == null) {
@@ -428,6 +428,57 @@ public class JiffTimestamp implements Comparable {
     /** The span from `other` to this timestamp with `largest` as its biggest unit. */
     public JiffSpan since(JiffTimestamp other, JiffUnit largest) {
         return until(other, largest).negate();
+    }
+
+    /**
+     * The span from this timestamp to `other`, with the units and rounding `options` ask for.
+     *
+     * The smallest unit defaults to `NANOSECOND`, and the largest to the bigger of `SECOND`
+     * and the smallest unit; it must be hours or smaller. When the smallest unit is bigger
+     * than a nanosecond, or the increment is not 1, the difference is rounded as
+     * `JiffSpan.round` does.
+     *
+     *     JiffTimestamp t1 = JiffTimestamp.parse('2024-03-15T08:14:00.5Z');
+     *     JiffTimestamp t2 = JiffTimestamp.parse('2024-03-15T10:00:00Z');
+     *     t1.until(t2, new JiffDifference().largest(JiffUnit.HOUR).smallest(JiffUnit.MINUTE));
+     *     // PT1H45M
+     *
+     * Throws when a unit is a day or bigger, the increment is not valid for the smallest
+     * unit, or the result does not fit.
+     *
+     * Mirrors `Timestamp::until` with a `TimestampDifference`.
+     */
+    public JiffSpan until(JiffTimestamp other, JiffDifference options) {
+        return difference(other, options, false);
+    }
+
+    /**
+     * The span from `other` to this timestamp, with the units and rounding `options` ask for:
+     * `until(other, options)` before rounding, negated. See
+     * `until(JiffTimestamp, JiffDifference)`.
+     *
+     * Mirrors `Timestamp::since` with a `TimestampDifference`.
+     */
+    public JiffSpan since(JiffTimestamp other, JiffDifference options) {
+        return difference(other, options, true);
+    }
+
+    private JiffSpan difference(JiffTimestamp other, JiffDifference options, Boolean negate) {
+        JiffDifference config = options == null ? new JiffDifference() : options;
+        JiffUnit smallest = config.getSmallest() == null
+            ? JiffUnit.NANOSECOND
+            : config.getSmallest();
+        JiffUnit largest = config.getLargest() == null
+            ? JiffMath.largerOf(smallest, JiffUnit.SECOND)
+            : config.getLargest();
+        JiffSpan span = until(other, largest);
+        return JiffSpanRelative.roundDifference(
+            negate ? span.negate() : span,
+            config,
+            smallest,
+            null,
+            false
+        );
     }
 
     /** The exact time from this timestamp to `other`; negative when `other` is earlier. */

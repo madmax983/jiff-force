@@ -558,6 +558,62 @@ public class JiffTime implements Comparable {
     }
 
     /**
+     * The span from this time until `other`, with the units and rounding `options` ask for.
+     *
+     * The largest unit defaults to `HOUR` and the smallest to `NANOSECOND`; both must be
+     * hours or smaller. When the smallest unit is bigger than a nanosecond, or the increment
+     * is not 1, the difference is rounded as `JiffSpan.round` does.
+     *
+     *     JiffTime t1 = JiffTime.newInstance(8, 14, 2, 500000000);
+     *     JiffTime t2 = JiffTime.newInstance(15, 30, 0, 0);
+     *     t1.until(t2, new JiffDifference().smallest(JiffUnit.MINUTE).mode(JiffRoundMode.HALF_EXPAND));
+     *     // PT7H16M
+     *
+     * Throws when a unit is a day or bigger, or the increment is not valid for the smallest
+     * unit.
+     *
+     * Mirrors `Time::until` with a `TimeDifference`.
+     */
+    public JiffSpan until(JiffTime other, JiffDifference options) {
+        return difference(other, options, false);
+    }
+
+    /**
+     * The span from `other` until this time, with the units and rounding `options` ask for:
+     * `until(other, options)` before rounding, negated. See `until(JiffTime, JiffDifference)`.
+     *
+     * Mirrors `Time::since` with a `TimeDifference`.
+     */
+    public JiffSpan since(JiffTime other, JiffDifference options) {
+        return difference(other, options, true);
+    }
+
+    private JiffSpan difference(JiffTime other, JiffDifference options, Boolean negate) {
+        JiffDifference config = options == null ? new JiffDifference() : options;
+        JiffUnit smallest = config.getSmallest() == null
+            ? JiffUnit.NANOSECOND
+            : config.getSmallest();
+        if (JiffMath.isCalendar(smallest)) {
+            throw new JiffException(
+                '\'' +
+                    JiffMath.singular(smallest) +
+                    '\' not allowed as a time unit for rounding span'
+            );
+        }
+        JiffSpan span = until(
+            other,
+            config.getLargest() == null ? JiffUnit.HOUR : config.getLargest()
+        );
+        return JiffSpanRelative.roundDifference(
+            negate ? span.negate() : span,
+            config,
+            smallest,
+            null,
+            false
+        );
+    }
+
+    /**
      * The absolute duration from this time until `other`. It is negative when `other` is
      * earlier than this time, and its magnitude is always less than 24 hours.
      *

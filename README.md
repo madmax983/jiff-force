@@ -97,8 +97,9 @@ This is a port in progress, tracking Jiff 1.0.0. It has not yet been compiled on
 | ISO 8601 / RFC 9557 parsing for dates, times, datetimes and timestamps | Done |
 | `JiffZonedDateTime` | Done, not yet independently verified |
 | Converting platform `Date`, `Time`, `Datetime` values, and record fields (`JiffRecords`) | Done |
-| Span arithmetic, comparison, totals and rounding relative to a date | Not started |
-| `until`/`since` with rounding options, `JiffZonedDateTime.parse` | Not started |
+| Span arithmetic, comparison, totals and rounding relative to a date (`JiffSpanRound`, `JiffSpanRelativeTo`) | Done |
+| `until`/`since` with rounding options (`JiffDifference`) | Done |
+| `JiffZonedDateTime.parse` | Not started |
 | `strftime`/`strptime`, RFC 2822 | Not started |
 
 Work is paused. [docs/HANDOFF.md](docs/HANDOFF.md) has the detailed state and the remaining plan.

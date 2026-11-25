@@ -678,6 +678,59 @@ public class JiffDateTime implements Comparable {
     }
 
     /**
+     * The span from this datetime until `other`, with the units and rounding `options` ask
+     * for.
+     *
+     * The smallest unit defaults to `NANOSECOND`, and the largest to the bigger of `DAY` and
+     * the smallest unit. When the smallest unit is bigger than a nanosecond, or the increment
+     * is not 1, the difference is rounded as `JiffSpan.round` does, measured from this
+     * datetime.
+     *
+     *     JiffDateTime dt1 = JiffDateTime.newInstance(2024, 3, 15, 8, 0, 0, 0);
+     *     JiffDateTime dt2 = JiffDateTime.newInstance(2024, 5, 1, 20, 0, 0, 0);
+     *     dt1.until(dt2, new JiffDifference().largest(JiffUnit.MONTH).smallest(JiffUnit.DAY)
+     *         .mode(JiffRoundMode.HALF_EXPAND));
+     *     // P1M17D
+     *
+     * Throws when the increment is not valid for the smallest unit, the largest unit is
+     * smaller than the smallest, or the result does not fit.
+     *
+     * Mirrors `DateTime::until` with a `DateTimeDifference`.
+     */
+    public JiffSpan until(JiffDateTime other, JiffDifference options) {
+        return difference(other, options, false);
+    }
+
+    /**
+     * The span from `other` until this datetime, with the units and rounding `options` ask
+     * for. This is `until(other, options)` before rounding, negated; the rounding is then
+     * measured from this datetime. See `until(JiffDateTime, JiffDifference)`.
+     *
+     * Mirrors `DateTime::since` with a `DateTimeDifference`.
+     */
+    public JiffSpan since(JiffDateTime other, JiffDifference options) {
+        return difference(other, options, true);
+    }
+
+    private JiffSpan difference(JiffDateTime other, JiffDifference options, Boolean negate) {
+        JiffDifference config = options == null ? new JiffDifference() : options;
+        JiffUnit smallest = config.getSmallest() == null
+            ? JiffUnit.NANOSECOND
+            : config.getSmallest();
+        JiffUnit largest = config.getLargest() == null
+            ? JiffMath.largerOf(smallest, JiffUnit.DAY)
+            : config.getLargest();
+        JiffSpan span = until(other, largest);
+        return JiffSpanRelative.roundDifference(
+            negate ? span.negate() : span,
+            config,
+            smallest,
+            JiffSpanRelativeTo.fromDateTime(this),
+            false
+        );
+    }
+
+    /**
      * The exact length of time from this datetime until `other`, counting every day as 24
      * hours. It is negative when `other` is earlier. This never fails.
      *

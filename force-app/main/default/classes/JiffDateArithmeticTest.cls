@@ -492,7 +492,7 @@ private class JiffDateArithmeticTest {
         Assert.areEqual(new JiffSpan(), earlier.until(earlier));
         Assert.areEqual(new JiffSpan(), earlier.since(earlier));
         // A null unit means the default too.
-        Assert.areEqual(new JiffSpan().days(4543), earlier.until(later, null));
+        Assert.areEqual(new JiffSpan().days(4543), earlier.until(later, (JiffUnit) null));
     }
 
     @IsTest

@@ -766,7 +766,7 @@ private class JiffTimestampTest {
             }
         }
         try {
-            JiffTimestamp.UNIX_EPOCH.since(nextDay, null);
+            JiffTimestamp.UNIX_EPOCH.since(nextDay, (JiffUnit) null);
             Assert.fail('expected a null unit to be rejected');
         } catch (JiffException e) {
             Assert.areEqual('largest unit must not be null', e.getMessage());
