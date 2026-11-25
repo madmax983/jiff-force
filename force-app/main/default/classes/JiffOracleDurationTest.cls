@@ -89,7 +89,7 @@ private class JiffOracleDurationTest {
     @IsTest
     static void roundingAgreesWithJiff() {
         List<String> rows = JiffOracleDurationRoundData.rows();
-        Assert.isTrue(rows.size() >= 300, 'expected the full vector set');
+        Assert.isTrue(rows.size() >= 1020, 'expected the full vector set');
         for (String row : rows) {
             List<String> f = row.split('\\|');
             JiffSignedDuration duration = parse(f.get(0));

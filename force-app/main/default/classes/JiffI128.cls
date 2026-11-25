@@ -73,8 +73,16 @@ public class JiffI128 implements Comparable {
     public static JiffI128 parse(String text) {
         Boolean negative = text.startsWith('-');
         String digits = negative || text.startsWith('+') ? text.substring(1) : text;
-        if (digits.length() == 0 || digits.length() > 35 || !digits.isNumeric()) {
+        if (digits.length() == 0 || digits.length() > 35) {
             throw new JiffException('invalid 128-bit integer: ' + text);
+        }
+        // ASCII digits only: isNumeric() also accepts other scripts' digits, which
+        // Long.valueOf then rejects with a platform exception.
+        for (Integer i = 0; i < digits.length(); i++) {
+            Integer ch = digits.charAt(i);
+            if (ch < 48 || ch > 57) {
+                throw new JiffException('invalid 128-bit integer: ' + text);
+            }
         }
         Integer split = Math.max(0, digits.length() - 18);
         Long upper = split == 0 ? 0L : Long.valueOf(digits.substring(0, split));
@@ -227,6 +235,16 @@ public class JiffI128 implements Comparable {
         if (hi == 0 && divisor.hi == 0) {
             Long q = lo / divisor.lo;
             return new List<JiffI128>{ new JiffI128(0L, q), new JiffI128(0L, lo - q * divisor.lo) };
+        }
+        // Operands that fit in a Long (about 292 years of nanoseconds) divide natively.
+        // LONG_MIN / -1 is the one quotient a Long cannot hold; it takes the slow path.
+        if (fitsLong() && divisor.fitsLong()) {
+            Long n64 = toLong();
+            Long d64 = divisor.toLong();
+            if (d64 != -1 || n64 != JiffMath.LONG_MIN) {
+                Long q = n64 / d64;
+                return new List<JiffI128>{ valueOf(q), valueOf(n64 - q * d64) };
+            }
         }
         Boolean negativeQuotient = isNegative() != divisor.isNegative();
         Boolean negativeRemainder = isNegative();
