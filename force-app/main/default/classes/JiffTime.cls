@@ -102,14 +102,15 @@ public class JiffTime implements Comparable {
     }
 
     /**
-     * Creates a time from a platform `Time`. A platform `Time` has millisecond precision, so
-     * the microsecond and nanosecond components of the result are always zero.
+     * Creates a time from a platform `Time`, such as a record's time field. A platform `Time`
+     * has millisecond precision, so the microsecond and nanosecond components of the result are
+     * always zero. A null `Time`, such as an empty field, gives null.
      *
      *     JiffTime.fromSystemTime(Time.newInstance(15, 22, 45, 123));  // 15:22:45.123
      */
     public static JiffTime fromSystemTime(Time value) {
         if (value == null) {
-            throw new JiffException('cannot convert a null system time to a `JiffTime`');
+            return null;
         }
         return new JiffTime(
             value.hour(),

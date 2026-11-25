@@ -1042,7 +1042,7 @@ private class JiffTimestampTest {
     @IsTest
     static void convertsFromAPlatformDatetime() {
         JiffTimestamp converted = JiffTimestamp.fromSystemDatetime(
-            Datetime.newInstanceGmt(2024, 2, 29, 12, 30, 45)
+            Datetime.newInstance(1709209845000L)
         );
         Assert.areEqual('2024-02-29T12:30:45Z', converted.toString());
         Assert.areEqual(
@@ -1066,7 +1066,7 @@ private class JiffTimestampTest {
     @IsTest
     static void convertsToAPlatformDatetimeDroppingSubMilliseconds() {
         Assert.areEqual(
-            Datetime.newInstanceGmt(2024, 2, 29, 12, 30, 45),
+            Datetime.newInstance(1709209845000L),
             utc(2024, 2, 29, 12, 30, 45, 0).toSystemDatetime()
         );
         Assert.areEqual(5123L, stamp(5L, 123456789).toSystemDatetime().getTime());

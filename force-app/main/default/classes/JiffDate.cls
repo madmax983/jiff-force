@@ -186,18 +186,26 @@ public class JiffDate implements Comparable {
     }
 
     /**
-     * Converts a platform `Date` to a `JiffDate` with the same year, month and day.
+     * Converts a platform `Date`, such as a record's date field, to a `JiffDate` for the same
+     * day. A null `Date`, such as an empty field, gives null.
      *
-     * Throws if the platform date has no counterpart here. That can only happen far from the
-     * present: a year outside `-9999..9999`, or a day that exists in the platform's calendar
-     * but not in the proleptic Gregorian one. The platform switches to the Julian calendar
-     * before 15 October 1582, where for example 29 February 1500 is a real day.
+     *     JiffDate closeDate = JiffDate.fromSystemDate(opportunity.CloseDate);
+     *
+     * The conversion goes through the day's position on the timeline rather than through
+     * `year()`, `month()` and `day()`, so it gives the same answer whatever the running user's
+     * locale and time zone. That matters: for a user whose locale uses the Buddhist calendar
+     * (`th_TH`), the platform reports the year of 29 February 2024 as 2567.
+     *
+     * The platform calendar is Julian before 15 October 1582. A platform date before then is
+     * converted to the same day on the timeline, which the proleptic Gregorian calendar used
+     * here may number differently. Throws if the day is outside the supported range.
      */
     public static JiffDate fromSystemDate(Date value) {
         if (value == null) {
-            throw new JiffException('the system Date to convert must not be null');
+            return null;
         }
-        return newInstance(value.year(), value.month(), value.day());
+        Long millis = Datetime.newInstanceGmt(value, Time.newInstance(0, 0, 0, 0)).getTime();
+        return fromEpochDay(JiffMath.floorDiv(millis, JiffMath.MILLIS_PER_CIVIL_DAY));
     }
 
     /**
@@ -489,22 +497,17 @@ public class JiffDate implements Comparable {
     }
 
     /**
-     * Converts this date to a platform `Date` with the same year, month and day.
+     * Converts this date to a platform `Date` for the same day, for example to store it in a
+     * record's date field. The inverse of `fromSystemDate`.
      *
-     * The platform calendar is Gregorian from 15 October 1582 and Julian before that, so it
-     * has no 5th to 14th of October 1582; this throws for those ten dates. Earlier dates
-     * convert field for field, but be aware that the platform will then do its own arithmetic
-     * on them (day of week, days between) in the Julian calendar.
+     *     opportunity.CloseDate = closeDate.toSystemDate();
+     *
+     * Like `fromSystemDate` this is independent of the running user's locale and time zone.
+     * Dates before 15 October 1582 become the same day on the timeline in the platform's
+     * Julian calendar, so their platform year, month and day can differ from this date's.
      */
     public Date toSystemDate() {
-        if (yearValue == 1582 && monthValue == 10 && dayValue >= 5 && dayValue <= 14) {
-            throw new JiffException(
-                'cannot convert `' +
-                    toString() +
-                    '` to a system Date: the platform calendar skips from 1582-10-04 to 1582-10-15'
-            );
-        }
-        return Date.newInstance(yearValue, monthValue, dayValue);
+        return Datetime.newInstance(toEpochDay() * JiffMath.MILLIS_PER_CIVIL_DAY).dateGmt();
     }
 
     // ---- arithmetic -----------------------------------------------------

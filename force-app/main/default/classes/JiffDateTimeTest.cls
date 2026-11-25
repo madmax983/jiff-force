@@ -569,7 +569,7 @@ private class JiffDateTimeTest {
 
     @IsTest
     static void readsAPlatformDatetimeOnTheWallClockOfAZone() {
-        Datetime value = Datetime.newInstanceGmt(2024, 7, 4, 12, 39, 0);
+        Datetime value = Datetime.newInstance(1720096740000L);
         Assert.areEqual(
             civil(2024, 7, 4, 8, 39, 0, 0),
             JiffDateTime.fromSystemDatetime(value, JiffTimeZone.get('America/New_York'))
@@ -612,7 +612,7 @@ private class JiffDateTimeTest {
     static void convertsToAPlatformDatetimeInAZone() {
         JiffTimeZone newYork = JiffTimeZone.get('America/New_York');
         Assert.areEqual(
-            Datetime.newInstanceGmt(2024, 7, 4, 12, 39, 0),
+            Datetime.newInstance(1720096740000L),
             civil(2024, 7, 4, 8, 39, 0, 0).toSystemDatetime(newYork)
         );
         // A skipped time moves forward by the length of the gap: 03:30 at -04.
