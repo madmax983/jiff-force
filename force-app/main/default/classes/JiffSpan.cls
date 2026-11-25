@@ -236,25 +236,379 @@ public class JiffSpan {
         if (factor == 1) {
             return this;
         }
-        Long absFactor = JiffMath.checkedNeg(factor < 0 ? factor : -factor, 'span multiple');
-        List<Long> next = new List<Long>();
-        for (Integer i = 0; i < UNIT_COUNT; i++) {
+        // Only `Long.MIN` has no absolute value. Jiff reports it as a multiple outside the
+        // range of every unit (`rhs.checked_abs().ok_or_else(b::SpanMultiple::error)`).
+        if (factor == JiffMath.LONG_MIN) {
+            throw JiffMath.rangeError('span multiple', -JiffMath.LONG_MAX, JiffMath.LONG_MAX);
+        }
+        Long absFactor = factor < 0 ? -factor : factor;
+        List<Long> next = magnitudes.clone();
+        // From years down to nanoseconds, as Jiff does, so that when several units overflow
+        // the error names the largest of them.
+        for (Integer i = UNIT_COUNT - 1; i >= 0; i--) {
             Long magnitude = magnitudes.get(i);
             if (magnitude == 0) {
-                next.add(0L);
                 continue;
             }
             Long max = LIMITS.get(i);
-            String what = JiffMath.plural(UNITS.get(i));
             if (
                 JiffMath.greaterThan(absFactor, max) ||
                 JiffMath.greaterThan(magnitude, max / absFactor)
             ) {
-                throw JiffMath.rangeError(what, -max, max);
+                throw JiffMath.rangeError(JiffMath.plural(UNITS.get(i)), -max, max);
             }
-            next.add(magnitude * absFactor);
+            next.set(i, magnitude * absFactor);
         }
         return new JiffSpan(factor < 0 ? -sign : sign, next);
+    }
+
+    // ---- arithmetic, comparison, totals and rounding ---------------------
+    //
+    // Days and bigger units have no fixed length, so the operations below need to know where
+    // the span starts as soon as one is involved: pass a `JiffSpanRelativeTo`. Without one,
+    // only spans of hours and smaller units are accepted. Passing null for the reference is
+    // the same as not passing one.
+
+    /**
+     * The sum of this span and `other`, balanced so that its biggest unit is the bigger of the
+     * two spans' biggest units. Throws when either span has days or bigger units; use
+     * `add(other, relative)` for those.
+     *
+     *     new JiffSpan().hours(2).minutes(59).add(new JiffSpan().minutes(2));   // PT3H1M
+     */
+    public JiffSpan add(JiffSpan other) {
+        return add(other, null);
+    }
+
+    /**
+     * The sum of this span and `other`, measured from `relative`: this span is added to it,
+     * then `other`, and the result is the span from `relative` to where that lands, using
+     * units up to the bigger of the two spans' biggest units.
+     *
+     *     JiffSpan span = new JiffSpan().months(1).days(15);
+     *     JiffSpan more = new JiffSpan().days(15);
+     *     span.add(more, JiffSpanRelativeTo.fromDate(JiffDate.newInstance(2008, 3, 1)));   // P2M
+     *     span.add(more, JiffSpanRelativeTo.fromDate(JiffDate.newInstance(2008, 4, 1)));   // P1M30D
+     *
+     * Throws when a span has days or bigger units and `relative` is null, when it has months
+     * or years and `relative` is `JiffSpanRelativeTo.daysAre24Hours()`, or when a unit of the
+     * result, or a datetime along the way, is out of range.
+     */
+    public JiffSpan add(JiffSpan other, JiffSpanRelativeTo relative) {
+        requireArgument(other, 'span to add');
+        return addSpan(other, relative);
+    }
+
+    /**
+     * This span plus an exact duration, balanced so that its biggest unit is this span's.
+     * Throws when this span has days or bigger units; use `add(duration, relative)` for those.
+     *
+     *     new JiffSpan().hours(1).add(JiffSignedDuration.fromMins(30));   // PT1H30M
+     */
+    public JiffSpan add(JiffSignedDuration duration) {
+        return add(duration, null);
+    }
+
+    /**
+     * This span plus an exact duration, measured from `relative`: the span is added to it,
+     * then the duration, and the result is the span from `relative` to where that lands,
+     * using units up to this span's biggest unit.
+     *
+     *     JiffSignedDuration thirtyDays = JiffSignedDuration.fromHours(30 * 24);
+     *     new JiffSpan().months(1).add(thirtyDays, JiffSpanRelativeTo.fromDate(JiffDate.newInstance(2024, 3, 1)));
+     *     // P2M (April has 30 days)
+     *
+     * Throws in the same cases as `add(JiffSpan, JiffSpanRelativeTo)`.
+     */
+    public JiffSpan add(JiffSignedDuration duration, JiffSpanRelativeTo relative) {
+        requireArgument(duration, 'duration to add');
+        return addDuration(duration, relative);
+    }
+
+    /**
+     * This span minus `other`: `add(other.negate())`.
+     *
+     *     new JiffSpan().hours(1).subtract(new JiffSpan().minutes(30));   // PT30M
+     */
+    public JiffSpan subtract(JiffSpan other) {
+        return subtract(other, null);
+    }
+
+    /** This span minus `other`, measured from `relative`: `add(other.negate(), relative)`. */
+    public JiffSpan subtract(JiffSpan other, JiffSpanRelativeTo relative) {
+        requireArgument(other, 'span to subtract');
+        return addSpan(other.negate(), relative);
+    }
+
+    /**
+     * This span minus an exact duration: `add(duration.negate())`. Throws when the duration
+     * is `JiffSignedDuration.MIN`, whose negation is out of range.
+     */
+    public JiffSpan subtract(JiffSignedDuration duration) {
+        return subtract(duration, null);
+    }
+
+    /** This span minus an exact duration, measured from `relative`. */
+    public JiffSpan subtract(JiffSignedDuration duration, JiffSpanRelativeTo relative) {
+        requireArgument(duration, 'duration to subtract');
+        if (duration.asSecs() == JiffMath.LONG_MIN) {
+            // Jiff negates the duration into an unsigned one, which then does not fit back.
+            throw new JiffException(
+                'unsigned duration exceeds Jiff\'s limits: ' + signedDurationRange().getMessage()
+            );
+        }
+        return addDuration(duration.negate(), relative);
+    }
+
+    private JiffSpan addSpan(JiffSpan other, JiffSpanRelativeTo relative) {
+        JiffUnit unit = JiffMath.largerOf(largestUnit(), other.largestUnit());
+        JiffSpanRelative start = resolve(relative, unit);
+        if (start == null) {
+            return addInvariant(unit, other.toInvariantDuration());
+        }
+        JiffSpanRelative mid = start.add(this);
+        return start.until(unit, mid.add(other));
+    }
+
+    private JiffSpan addDuration(JiffSignedDuration duration, JiffSpanRelativeTo relative) {
+        JiffUnit unit = largestUnit();
+        JiffSpanRelative start = resolve(relative, unit);
+        if (start == null) {
+            return addInvariant(unit, duration);
+        }
+        JiffSpanRelative mid = start.add(this);
+        return start.until(unit, mid.add(duration));
+    }
+
+    /** Adds a duration to this span's own exact length, for spans of weeks at most. */
+    private JiffSpan addInvariant(JiffUnit unit, JiffSignedDuration duration) {
+        JiffSignedDuration sum;
+        try {
+            sum = toInvariantDuration().add(duration);
+        } catch (JiffException e) {
+            throw signedDurationRange();
+        }
+        return fromInvariantDuration(unit, sum);
+    }
+
+    private static JiffException signedDurationRange() {
+        return JiffMath.rangeError('signed duration seconds', JiffMath.LONG_MIN, JiffMath.LONG_MAX);
+    }
+
+    /**
+     * The starting point to measure spans up to `unit` from, or null when they can be handled
+     * as exact durations. Throws when `unit` needs a reference that `relative` does not give.
+     */
+    private static JiffSpanRelative resolve(JiffSpanRelativeTo relative, JiffUnit unit) {
+        if (relative == null) {
+            JiffSpanRelativeTo.requireRelative(unit);
+            return null;
+        }
+        return relative.toRelative(unit);
+    }
+
+    /**
+     * Compares the lengths of this span and `other`: -1, 0 or 1 as this span is shorter, the
+     * same length or longer. Negative spans are shorter than the zero span. Throws when either
+     * span has days or bigger units; use `compare(other, relative)` for those.
+     *
+     * Unlike `equals`, this looks at length only: `PT3H` and `PT180M` compare as 0.
+     */
+    public Integer compare(JiffSpan other) {
+        return compare(other, null);
+    }
+
+    /**
+     * Compares the lengths of this span and `other`, each measured from `relative`: -1, 0 or
+     * 1 as this span ends earlier, at the same instant or later.
+     *
+     *     JiffZonedDateTime zdt = JiffDate.newInstance(2020, 11, 1).inTz('America/Los_Angeles');
+     *     // That day is 25 hours long, so 3 days and 6 hours 50 minutes is longer than 79 hours 10 minutes.
+     *     new JiffSpan().days(3).hours(6).minutes(50)
+     *         .compare(new JiffSpan().hours(79).minutes(10), JiffSpanRelativeTo.fromZonedDateTime(zdt));   // 1
+     *
+     * Throws when a span has days or bigger units and `relative` is null, when it has months
+     * or years and `relative` is `JiffSpanRelativeTo.daysAre24Hours()`, or when adding a span
+     * to `relative` goes out of range.
+     */
+    public Integer compare(JiffSpan other, JiffSpanRelativeTo relative) {
+        requireArgument(other, 'span to compare with');
+        JiffUnit unit = JiffMath.largerOf(largestUnit(), other.largestUnit());
+        JiffSpanRelative start = resolve(relative, unit);
+        if (start == null) {
+            return toInvariantDuration().compareTo(other.toInvariantDuration());
+        }
+        JiffSignedDuration end1 = start.add(this).toDuration();
+        JiffSignedDuration end2 = start.add(other).toDuration();
+        return end1.compareTo(end2);
+    }
+
+    /**
+     * The length of this span in `unit`, as a fraction. Throws when the span or `unit` is a
+     * day or bigger; use `total(unit, relative)` for those.
+     *
+     *     new JiffSpan().hours(3).minutes(10).total(JiffUnit.SECOND);   // 11400.0
+     */
+    public Double total(JiffUnit unit) {
+        return total(unit, null);
+    }
+
+    /**
+     * The length of this span in `unit`, measured from `relative`, as a fraction. A month or
+     * a year counts the calendar's months or years from `relative`; from a zoned datetime a
+     * day is as long as that day really is.
+     *
+     *     JiffZonedDateTime march = JiffDate.newInstance(2024, 3, 1).inTz('America/New_York');
+     *     // March 2024 there had a 23 hour day, so 744 hours is a little more than its 31 days.
+     *     new JiffSpan().hours(744).total(JiffUnit.MONTH, JiffSpanRelativeTo.fromZonedDateTime(march));
+     *     // 1.0013888888888889
+     *
+     * The division is done in 64 bit floating point at the end, exactly as Jiff does it, so
+     * the result matches Jiff's to the last bit. Throws when the span or `unit` is a day or
+     * bigger and `relative` is null, when either is a month or year and `relative` is
+     * `JiffSpanRelativeTo.daysAre24Hours()`, or when a datetime along the way is out of range.
+     */
+    public Double total(JiffUnit unit, JiffSpanRelativeTo relative) {
+        requireArgument(unit, 'unit to total');
+        JiffSpanRelative start = resolve(relative, JiffMath.largerOf(unit, largestUnit()));
+        if (start == null) {
+            return JiffSpanRelative.totalInvariant(this, unit);
+        }
+        return start.total(this, unit);
+    }
+
+    /**
+     * This span rounded to a multiple of `smallest` with `JiffRoundMode.HALF_EXPAND`:
+     * `round(JiffSpanRound.to(smallest))`.
+     *
+     *     new JiffSpan().hours(1).minutes(59).round(JiffUnit.HOUR);   // PT2H
+     */
+    public JiffSpan round(JiffUnit smallest) {
+        return round(JiffSpanRound.to(smallest));
+    }
+
+    /**
+     * This span balanced and rounded as `options` say: units smaller than its smallest unit
+     * are rounded away, units bigger than its largest unit are folded into it, and units in
+     * between carry over into the next one up as they fill. See `JiffSpanRound`.
+     *
+     *     new JiffSpan().nanoseconds(123456789123456789L).round(new JiffSpanRound().largest(JiffUnit.HOUR));
+     *     // PT34293H33M9.123456789S
+     *
+     * Throws when the increment is not valid for the smallest unit, when the largest unit is
+     * smaller than the smallest unit, when days or bigger units are involved (in the span or
+     * in the options) without a reference point in `options`, and when the result does not fit.
+     */
+    public JiffSpan round(JiffSpanRound options) {
+        requireArgument(options, 'rounding options');
+        JiffUnit smallest = options.getSmallest();
+        JiffUnit existingLargest = largestUnit();
+        JiffUnit largest = options.getLargest() != null
+            ? options.getLargest()
+            : JiffMath.largerOf(smallest, existingLargest);
+        JiffUnit max = JiffMath.largerOf(existingLargest, largest);
+        Long increment;
+        try {
+            increment = JiffRounding.incrementForSpan(smallest, options.getIncrement());
+        } catch (JiffException e) {
+            throw JiffSpanRelative.inContext('failed rounding span', e);
+        }
+        if (JiffMath.isLarger(smallest, largest)) {
+            throw new JiffException(
+                'largest unit (\'' +
+                    JiffMath.singular(largest) +
+                    '\') cannot be smaller than smallest unit (\'' +
+                    JiffMath.singular(smallest) +
+                    '\')'
+            );
+        }
+        JiffRoundMode mode = options.getMode();
+        JiffSpanRelativeTo relative = options.getRelative();
+        if (relative == null) {
+            // Without a reference point, only units of a fixed length can be involved.
+            requireRelativeFor(smallest, 'error with `smallest` rounding option');
+            if (options.getLargest() != null) {
+                requireRelativeFor(options.getLargest(), 'error with `largest` rounding option');
+            }
+            requireRelativeFor(existingLargest, 'error with largest unit in span to be rounded');
+            return JiffSpanNudge.roundInvariant(this, largest, smallest, increment, mode);
+        }
+        JiffSpanRelative start = relative.toRelative(max);
+        if (start == null) {
+            // Every unit involved has a fixed length from this reference, so the span can be
+            // rounded as one exact duration.
+            return JiffSpanNudge.roundInvariant(this, largest, smallest, increment, mode);
+        }
+        return start.round(this, largest, smallest, increment, mode);
+    }
+
+    private static void requireRelativeFor(JiffUnit unit, String option) {
+        try {
+            JiffSpanRelativeTo.requireRelative(unit);
+        } catch (JiffException e) {
+            throw JiffSpanRelative.inContext(option, e);
+        }
+    }
+
+    /**
+     * The exact length of this span. Days and bigger units have no fixed length on their own,
+     * so this throws when the span has any; use `toDuration(relative)` for those.
+     *
+     *     new JiffSpan().hours(1).minutes(30).toDuration();   // PT1H30M
+     *
+     * Mirrors `TryFrom<Span> for SignedDuration`. A signed duration can hold any span of
+     * hours and smaller units, so nothing else can fail.
+     */
+    public JiffSignedDuration toDuration() {
+        try {
+            JiffSpanRelativeTo.requireRelative(largestUnit());
+        } catch (JiffException e) {
+            throw JiffSpanRelative.inContext(
+                'failed to convert span to duration without relative datetime ' +
+                '(must use `JiffSpan.toDuration(JiffSpanRelativeTo)` instead)',
+                e
+            );
+        }
+        return toInvariantDuration();
+    }
+
+    /**
+     * The exact length of this span, measured from `relative`.
+     *
+     *     JiffSpan year = new JiffSpan().years(1);
+     *     year.toDuration(JiffSpanRelativeTo.fromDate(JiffDate.newInstance(2024, 1, 1)));   // PT8784H
+     *     year.toDuration(JiffSpanRelativeTo.fromDate(JiffDate.newInstance(2023, 1, 1)));   // PT8760H
+     *     new JiffSpan().weeks(1).days(1).toDuration(JiffSpanRelativeTo.daysAre24Hours());   // PT192H
+     *
+     * A null `relative` is the same as `toDuration()`. Throws when the span has months or
+     * years and `relative` is `JiffSpanRelativeTo.daysAre24Hours()`, or when adding the span
+     * to `relative` goes out of range.
+     */
+    public JiffSignedDuration toDuration(JiffSpanRelativeTo relative) {
+        if (relative == null) {
+            return toDuration();
+        }
+        try {
+            JiffSpanRelative start = relative.toRelative(largestUnit());
+            if (start == null) {
+                return toInvariantDuration();
+            }
+            return start.until(JiffUnit.SECOND, start.add(this)).toInvariantDuration();
+        } catch (JiffException e) {
+            String origin = relative.isDaysAre24Hours()
+                ? 'when all days are assumed to be 24 hours'
+                : relative.getDateTime() != null ? 'from civil datetime' : 'from zoned datetime';
+            throw JiffSpanRelative.inContext(
+                'could not compute normalized relative span ' + origin,
+                e
+            );
+        }
+    }
+
+    private static void requireArgument(Object value, String what) {
+        if (value == null) {
+            throw new JiffException('the ' + what + ' must not be null');
+        }
     }
 
     // ---- structure (internal helpers shared with the other jiff-force types) ----
@@ -423,7 +777,12 @@ public class JiffSpan {
     /** `secs * perSecond + extra`, or a range error for `unit` if that overflows its limit. */
     private static Long scaled(Long secs, Long perSecond, Long extra, JiffUnit unit) {
         Long max = LIMITS.get(unit.ordinal());
-        if (JiffMath.greaterThan(JiffMath.abs(secs), (max - JiffMath.abs(extra)) / perSecond)) {
+        // `extra` is less than a second in magnitude, so its absolute value is safe to take.
+        // `secs` may be `Long.MIN`, which has none, so it is compared against both ends of
+        // the range instead. The two never differ in sign, so the sum is within `max`
+        // exactly when `secs` is within `bound`.
+        Long bound = (max - JiffMath.abs(extra)) / perSecond;
+        if (JiffMath.greaterThan(secs, bound) || JiffMath.lessThan(secs, -bound)) {
             throw JiffMath.rangeError(JiffMath.plural(unit), -max, max);
         }
         return secs * perSecond + extra;

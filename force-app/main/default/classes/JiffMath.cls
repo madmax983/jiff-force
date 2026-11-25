@@ -20,6 +20,7 @@ public class JiffMath {
     public static final Long NANOS_PER_CIVIL_WEEK = 604800000000000L;
     public static final Long MICROS_PER_SEC = 1000000L;
     public static final Long MILLIS_PER_SEC = 1000L;
+    public static final Long MILLIS_PER_CIVIL_DAY = 86400000L;
     public static final Long SECS_PER_MIN = 60L;
     public static final Long SECS_PER_HOUR = 3600L;
     public static final Long SECS_PER_CIVIL_DAY = 86400L;

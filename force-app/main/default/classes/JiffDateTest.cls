@@ -757,83 +757,83 @@ private class JiffDateTest {
     }
 
     // ---- platform Date --------------------------------------------------
+    //
+    // These tests must pass whatever the running user's locale and time zone, because a
+    // Buddhist calendar locale (th_TH) changes what Date.newInstance, year(), month() and day()
+    // mean. So platform dates are built from epoch milliseconds and checked the same way, never
+    // through their fields. The epoch days are Jiff's.
 
-    @IsTest
-    static void convertsToAndFromAPlatformDate() {
-        Date leapDay = Date.newInstance(2024, 2, 29);
-        Assert.areEqual(ymd(2024, 2, 29), JiffDate.fromSystemDate(leapDay));
-        Assert.areEqual(leapDay, ymd(2024, 2, 29).toSystemDate());
-        Date converted = ymd(1970, 1, 1).toSystemDate();
-        Assert.areEqual(1970, converted.year());
-        Assert.areEqual(1, converted.month());
-        Assert.areEqual(1, converted.day());
-        Assert.areEqual(Date.newInstance(9999, 12, 31), JiffDate.MAX.toSystemDate());
-        Assert.areEqual(JiffDate.MAX, JiffDate.fromSystemDate(Date.newInstance(9999, 12, 31)));
+    private static final Long MILLIS_PER_DAY = 86400000L;
+
+    /** The platform Date for a day counted from 1970-01-01, built without calendar fields. */
+    private static Date platformDay(Long epochDay) {
+        return Datetime.newInstance(epochDay * MILLIS_PER_DAY).dateGmt();
+    }
+
+    /** The epoch day a platform Date falls on, read without calendar fields. */
+    private static Long epochDayOf(Date value) {
+        Long millis = Datetime.newInstanceGmt(value, Time.newInstance(0, 0, 0, 0)).getTime();
+        Assert.areEqual(0L, Math.mod(millis, MILLIS_PER_DAY), 'midnight of ' + value);
+        return millis / MILLIS_PER_DAY;
     }
 
     @IsTest
-    static void platformDatesKeepTheirFieldsAcrossTheWholeRange() {
+    static void convertsToAndFromAPlatformDate() {
+        Assert.areEqual(ymd(2024, 2, 29), JiffDate.fromSystemDate(platformDay(19782L)));
+        Assert.areEqual(platformDay(19782L), ymd(2024, 2, 29).toSystemDate());
+        Assert.areEqual(19782L, epochDayOf(ymd(2024, 2, 29).toSystemDate()));
+        Assert.areEqual(0L, epochDayOf(ymd(1970, 1, 1).toSystemDate()));
+        Assert.areEqual(-1L, epochDayOf(ymd(1969, 12, 31).toSystemDate()));
+        Assert.areEqual(ymd(1969, 12, 31), JiffDate.fromSystemDate(platformDay(-1L)));
+        Assert.areEqual(2932896L, epochDayOf(JiffDate.MAX.toSystemDate()));
+        Assert.areEqual(JiffDate.MAX, JiffDate.fromSystemDate(platformDay(2932896L)));
+    }
+
+    @IsTest
+    static void aNullPlatformDateGivesNull() {
+        Date empty = null;
+        Assert.isNull(JiffDate.fromSystemDate(empty));
+    }
+
+    @IsTest
+    static void platformDatesRoundTripAcrossTheGregorianRange() {
+        // From the platform's switch to the Gregorian calendar to the end of the range.
         List<JiffDate> dates = new List<JiffDate>{
-            // The days on either side of the platform's switch from the Julian calendar.
-            ymd(1582, 10, 4),
             ymd(1582, 10, 15),
-            ymd(0, 2, 29),
-            ymd(-4, 2, 29),
-            ymd(1500, 2, 28),
-            ymd(1500, 3, 1)
+            ymd(1600, 2, 29),
+            ymd(1700, 2, 28),
+            ymd(1900, 3, 1),
+            ymd(2000, 2, 29),
+            ymd(2100, 3, 1),
+            ymd(2400, 2, 29)
         };
-        for (Long epochDay = -4371587L; epochDay <= 2932896L; epochDay += 9973) {
+        for (Long epochDay = -141427L; epochDay <= 2932896L; epochDay += 9973) {
             dates.add(JiffDate.fromEpochDay(epochDay));
         }
         for (JiffDate d : dates) {
-            if (d.year() == 1582 && d.month() == 10 && d.day() > 4 && d.day() < 15) {
-                continue;
-            }
             Date converted = d.toSystemDate();
-            Assert.areEqual(d.year(), converted.year(), 'year of ' + d);
-            Assert.areEqual(d.month(), converted.month(), 'month of ' + d);
-            Assert.areEqual(d.day(), converted.day(), 'day of ' + d);
+            Assert.areEqual(d.toEpochDay(), epochDayOf(converted), 'day of ' + d);
             Assert.areEqual(d, JiffDate.fromSystemDate(converted), 'round trip of ' + d);
         }
     }
 
     @IsTest
-    static void theDaysThePlatformCalendarSkipsCannotBeConverted() {
-        for (Integer day = 5; day <= 14; day++) {
-            try {
-                ymd(1582, 10, day).toSystemDate();
-                Assert.fail('expected 1582-10-' + day + ' to be rejected');
-            } catch (JiffException e) {
-                Assert.areEqual(
-                    'cannot convert `1582-10-' +
-                        String.valueOf(day).leftPad(2, '0') +
-                        '` to a system Date: the platform calendar skips from 1582-10-04 to 1582-10-15',
-                    e.getMessage()
-                );
-            }
+    static void datesBeforeTheGregorianSwitchKeepTheirPlaceOnTheTimeline() {
+        // The platform numbers these days in the Julian calendar; the day itself is kept.
+        List<JiffDate> dates = new List<JiffDate>{
+            ymd(1582, 10, 14),
+            ymd(1582, 10, 5),
+            ymd(1582, 10, 4),
+            ymd(1500, 2, 28),
+            ymd(1500, 3, 1),
+            ymd(1, 1, 1)
+        };
+        for (JiffDate d : dates) {
+            Date converted = d.toSystemDate();
+            Assert.areEqual(d.toEpochDay(), epochDayOf(converted), 'day of ' + d);
+            Assert.areEqual(d, JiffDate.fromSystemDate(converted), 'round trip of ' + d);
         }
     }
-
-    @IsTest
-    static void aPlatformDateOutsideTheSupportedRangeIsRejected() {
-        try {
-            JiffDate.fromSystemDate(Date.newInstance(10000, 1, 1));
-            Assert.fail('expected year 10000 to be rejected');
-        } catch (JiffException e) {
-            Assert.areEqual(
-                'parameter \'year\' is not in the required range of -9999..=9999',
-                e.getMessage()
-            );
-        }
-        try {
-            JiffDate.fromSystemDate(null);
-            Assert.fail('expected a missing date to be rejected');
-        } catch (JiffException e) {
-            Assert.areEqual('the system Date to convert must not be null', e.getMessage());
-        }
-    }
-
-    // ---- combining with a time ------------------------------------------
 
     @IsTest
     static void combinesWithATimeIntoADatetime() {

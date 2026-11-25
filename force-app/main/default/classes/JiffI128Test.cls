@@ -80,6 +80,75 @@ private class JiffI128Test {
     }
 
     @IsTest
+    static void parseAcceptsOnlyAsciiDigits() {
+        Assert.areEqual(
+            '-123456789012345678901234',
+            JiffI128.parse('-123456789012345678901234').toString()
+        );
+        Assert.areEqual('42', JiffI128.parse('+42').toString());
+        // Arabic-Indic and full width digits count as numeric in Apex but are not accepted.
+        List<String> rejected = new List<String>{
+            String.fromCharArray(new List<Integer>{ 1633, 1634, 1635 }),
+            String.fromCharArray(new List<Integer>{ 65297, 65298, 65299 }),
+            '12a',
+            '',
+            '-',
+            '1234567890123456789012345678901234567'
+        };
+        for (String text : rejected) {
+            try {
+                JiffI128.parse(text);
+                Assert.fail('expected ' + text + ' to be rejected');
+            } catch (JiffException e) {
+                Assert.areEqual('invalid 128-bit integer: ' + text, e.getMessage());
+            }
+        }
+    }
+
+    @IsTest
+    static void divisionOfLongSizedOperandsMatchesTheSlowPath() {
+        // Values beyond 10^18 that still fit in a Long take the native path; the results are
+        // checked against products that only the exact arithmetic can reconstruct.
+        List<Long> dividends = new List<Long>{
+            JiffMath.LONG_MAX,
+            JiffMath.LONG_MIN,
+            1709164800000000000L,
+            -1709164800000000001L,
+            1000000000000000000L
+        };
+        List<Long> divisors = new List<Long>{
+            1L,
+            -1L,
+            7L,
+            86400000000000L,
+            -1000000000L,
+            JiffMath.LONG_MAX
+        };
+        for (Long n : dividends) {
+            for (Long d : divisors) {
+                List<JiffI128> parts = JiffI128.valueOf(n).divRem(JiffI128.valueOf(d));
+                Assert.areEqual(
+                    JiffI128.valueOf(n),
+                    parts.get(0).multiply(d).add(parts.get(1)),
+                    n + ' / ' + d
+                );
+                Assert.isTrue(
+                    parts.get(1).abs().compareTo(JiffI128.valueOf(d).abs()) < 0,
+                    n + ' % ' + d
+                );
+                Assert.isTrue(
+                    parts.get(1).isZero() || parts.get(1).isNegative() == (n < 0),
+                    'remainder sign of ' + n + ' % ' + d
+                );
+            }
+        }
+        // The one quotient that does not fit in a Long.
+        List<JiffI128> edge = JiffI128.valueOf(JiffMath.LONG_MIN).divRem(JiffI128.valueOf(-1L));
+        Assert.areEqual('9223372036854775808', edge.get(0).toString());
+        Assert.isTrue(edge.get(1).isZero());
+    }
+
+    @IsTest
     static void convertsToAndFromLong() {
         Assert.areEqual(JiffMath.LONG_MAX, JiffI128.valueOf(JiffMath.LONG_MAX).toLong());
         Assert.areEqual(JiffMath.LONG_MIN, JiffI128.valueOf(JiffMath.LONG_MIN).toLong());

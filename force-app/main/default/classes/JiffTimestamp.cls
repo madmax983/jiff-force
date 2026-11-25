@@ -405,8 +405,8 @@ public class JiffTimestamp implements Comparable {
      * time zone to say how long a day is. Asking for a small unit can also throw: a span
      * cannot hold more than about 292 years of nanoseconds.
      *
-     * Jiff's `TimestampDifference` can also round the result. It does so by rounding the
-     * span, so that option belongs with span rounding and is not offered here.
+     * Nothing is rounded here; `until(JiffTimestamp, JiffDifference)` can also round the
+     * result.
      */
     public JiffSpan until(JiffTimestamp other, JiffUnit largest) {
         if (largest == null) {
@@ -428,6 +428,57 @@ public class JiffTimestamp implements Comparable {
     /** The span from `other` to this timestamp with `largest` as its biggest unit. */
     public JiffSpan since(JiffTimestamp other, JiffUnit largest) {
         return until(other, largest).negate();
+    }
+
+    /**
+     * The span from this timestamp to `other`, with the units and rounding `options` ask for.
+     *
+     * The smallest unit defaults to `NANOSECOND`, and the largest to the bigger of `SECOND`
+     * and the smallest unit; it must be hours or smaller. When the smallest unit is bigger
+     * than a nanosecond, or the increment is not 1, the difference is rounded as
+     * `JiffSpan.round` does.
+     *
+     *     JiffTimestamp t1 = JiffTimestamp.parse('2024-03-15T08:14:00.5Z');
+     *     JiffTimestamp t2 = JiffTimestamp.parse('2024-03-15T10:00:00Z');
+     *     t1.until(t2, new JiffDifference().largest(JiffUnit.HOUR).smallest(JiffUnit.MINUTE));
+     *     // PT1H45M
+     *
+     * Throws when a unit is a day or bigger, the increment is not valid for the smallest
+     * unit, or the result does not fit.
+     *
+     * Mirrors `Timestamp::until` with a `TimestampDifference`.
+     */
+    public JiffSpan until(JiffTimestamp other, JiffDifference options) {
+        return difference(other, options, false);
+    }
+
+    /**
+     * The span from `other` to this timestamp, with the units and rounding `options` ask for:
+     * `until(other, options)` before rounding, negated. See
+     * `until(JiffTimestamp, JiffDifference)`.
+     *
+     * Mirrors `Timestamp::since` with a `TimestampDifference`.
+     */
+    public JiffSpan since(JiffTimestamp other, JiffDifference options) {
+        return difference(other, options, true);
+    }
+
+    private JiffSpan difference(JiffTimestamp other, JiffDifference options, Boolean negate) {
+        JiffDifference config = options == null ? new JiffDifference() : options;
+        JiffUnit smallest = config.getSmallest() == null
+            ? JiffUnit.NANOSECOND
+            : config.getSmallest();
+        JiffUnit largest = config.getLargest() == null
+            ? JiffMath.largerOf(smallest, JiffUnit.SECOND)
+            : config.getLargest();
+        JiffSpan span = until(other, largest);
+        return JiffSpanRelative.roundDifference(
+            negate ? span.negate() : span,
+            config,
+            smallest,
+            null,
+            false
+        );
     }
 
     /** The exact time from this timestamp to `other`; negative when `other` is earlier. */
@@ -519,6 +570,41 @@ public class JiffTimestamp implements Comparable {
     public Integer hashCode() {
         return JiffMath.floorMod(JiffMath.floorMod(secs, 1000000007L) * 31 + nanos, 1000000007L)
             .intValue();
+    }
+
+    // ---- strftime / strptime ------------------------------------------------
+
+    /**
+     * Parses a timestamp from `input` according to the `strptime` format `format`. The
+     * conversion specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffTimestamp.strptime('%F %H:%M %:z', '2024-07-14 21:14 -04:00');
+     *     // 2024-07-15T01:14:00Z
+     *
+     * Throws `JiffException` when the format is invalid, when the input does not match it, or
+     * when the input has neither a Unix timestamp (`%s`) nor a datetime with an offset.
+     *
+     * Mirrors `jiff::Timestamp::strptime`.
+     */
+    public static JiffTimestamp strptime(String format, String input) {
+        return JiffStrtime.parse(format, input).toTimestamp();
+    }
+
+    /**
+     * Formats this timestamp according to the `strftime` format `format`. The conversion
+     * specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffTimestamp.fromSecond(86400L).strftime('%a %b %e %I:%M:%S %p UTC %Y');
+     *     // Fri Jan  2 12:00:00 AM UTC 1970
+     *
+     * This never throws for a non-null format. A specifier that cannot be applied, such as
+     * `%Z` (a timestamp has no time zone), or an unknown one, is written out literally. To
+     * have such mistakes reported instead, use `JiffStrtime.format`.
+     *
+     * Mirrors `jiff::Timestamp::strftime`.
+     */
+    public String strftime(String format) {
+        return JiffStrtime.formatLenient(format, JiffBrokenDownTime.fromTimestamp(this));
     }
 
     /** Formats this instant as an RFC 3339 timestamp in UTC, for example `2024-06-19T19:22:45Z`. */

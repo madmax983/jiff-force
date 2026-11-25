@@ -102,14 +102,15 @@ public class JiffTime implements Comparable {
     }
 
     /**
-     * Creates a time from a platform `Time`. A platform `Time` has millisecond precision, so
-     * the microsecond and nanosecond components of the result are always zero.
+     * Creates a time from a platform `Time`, such as a record's time field. A platform `Time`
+     * has millisecond precision, so the microsecond and nanosecond components of the result are
+     * always zero. A null `Time`, such as an empty field, gives null.
      *
      *     JiffTime.fromSystemTime(Time.newInstance(15, 22, 45, 123));  // 15:22:45.123
      */
     public static JiffTime fromSystemTime(Time value) {
         if (value == null) {
-            throw new JiffException('cannot convert a null system time to a `JiffTime`');
+            return null;
         }
         return new JiffTime(
             value.hour(),
@@ -557,6 +558,62 @@ public class JiffTime implements Comparable {
     }
 
     /**
+     * The span from this time until `other`, with the units and rounding `options` ask for.
+     *
+     * The largest unit defaults to `HOUR` and the smallest to `NANOSECOND`; both must be
+     * hours or smaller. When the smallest unit is bigger than a nanosecond, or the increment
+     * is not 1, the difference is rounded as `JiffSpan.round` does.
+     *
+     *     JiffTime t1 = JiffTime.newInstance(8, 14, 2, 500000000);
+     *     JiffTime t2 = JiffTime.newInstance(15, 30, 0, 0);
+     *     t1.until(t2, new JiffDifference().smallest(JiffUnit.MINUTE).mode(JiffRoundMode.HALF_EXPAND));
+     *     // PT7H16M
+     *
+     * Throws when a unit is a day or bigger, or the increment is not valid for the smallest
+     * unit.
+     *
+     * Mirrors `Time::until` with a `TimeDifference`.
+     */
+    public JiffSpan until(JiffTime other, JiffDifference options) {
+        return difference(other, options, false);
+    }
+
+    /**
+     * The span from `other` until this time, with the units and rounding `options` ask for:
+     * `until(other, options)` before rounding, negated. See `until(JiffTime, JiffDifference)`.
+     *
+     * Mirrors `Time::since` with a `TimeDifference`.
+     */
+    public JiffSpan since(JiffTime other, JiffDifference options) {
+        return difference(other, options, true);
+    }
+
+    private JiffSpan difference(JiffTime other, JiffDifference options, Boolean negate) {
+        JiffDifference config = options == null ? new JiffDifference() : options;
+        JiffUnit smallest = config.getSmallest() == null
+            ? JiffUnit.NANOSECOND
+            : config.getSmallest();
+        if (JiffMath.isCalendar(smallest)) {
+            throw new JiffException(
+                '\'' +
+                    JiffMath.singular(smallest) +
+                    '\' not allowed as a time unit for rounding span'
+            );
+        }
+        JiffSpan span = until(
+            other,
+            config.getLargest() == null ? JiffUnit.HOUR : config.getLargest()
+        );
+        return JiffSpanRelative.roundDifference(
+            negate ? span.negate() : span,
+            config,
+            smallest,
+            null,
+            false
+        );
+    }
+
+    /**
      * The absolute duration from this time until `other`. It is negative when `other` is
      * earlier than this time, and its magnitude is always less than 24 hours.
      *
@@ -663,6 +720,39 @@ public class JiffTime implements Comparable {
 
     public Integer hashCode() {
         return toSecondOfDay() * 31 + Math.mod(subsecValue, 1000003);
+    }
+
+    // ---- strftime / strptime ------------------------------------------------
+
+    /**
+     * Parses a civil time from `input` according to the `strptime` format `format`. The
+     * conversion specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffTime.strptime('%I:%M%P', '4:30pm');   // 16:30:00
+     *
+     * Throws `JiffException` when the format is invalid, when the input does not match it, or
+     * when the input has a smaller unit without the larger ones, such as minutes without hours.
+     *
+     * Mirrors `jiff::civil::Time::strptime`.
+     */
+    public static JiffTime strptime(String format, String input) {
+        return JiffStrtime.parse(format, input).toTime();
+    }
+
+    /**
+     * Formats this time according to the `strftime` format `format`. The conversion
+     * specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffTime.newInstance(16, 30, 59, 0).strftime('%-I:%M%P');   // 4:30pm
+     *
+     * This never throws for a non-null format. A specifier that cannot be applied, such as
+     * `%Y` or `%z`, or an unknown one, is written out literally. To have such mistakes
+     * reported instead, use `JiffStrtime.format`.
+     *
+     * Mirrors `jiff::civil::Time::strftime`.
+     */
+    public String strftime(String format) {
+        return JiffStrtime.formatLenient(format, JiffBrokenDownTime.fromTime(this));
     }
 
     /** Formats this time as ISO 8601, for example `15:22:45` or `15:22:45.123`. */

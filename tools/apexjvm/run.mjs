@@ -45,11 +45,22 @@ fs.rmSync(buildDir, { recursive: true, force: true });
 fs.mkdirSync(srcOut, { recursive: true });
 fs.mkdirSync(classOut, { recursive: true });
 
-const sources = listFiles(classesDir, ".cls").map((file) => ({
-    file,
-    name: path.basename(file),
-    text: fs.readFileSync(file, "utf8"),
-}));
+// Classes that need platform features the shims do not model (SObjects, describe) are
+// listed in aer-only.txt, one name per line, and are tested on AER only.
+const aerOnly = new Set(
+    fs
+        .readFileSync(path.join(here, "aer-only.txt"), "utf8")
+        .split("\n")
+        .map((line) => line.replace(/#.*/, "").trim())
+        .filter(Boolean),
+);
+const sources = listFiles(classesDir, ".cls")
+    .filter((file) => !aerOnly.has(path.basename(file, ".cls")))
+    .map((file) => ({
+        file,
+        name: path.basename(file),
+        text: fs.readFileSync(file, "utf8"),
+    }));
 const enums = new Set(sources.flatMap((s) => collectEnums(s.text)));
 const typeNames = new Set(sources.map((s) => s.name.replace(/\.cls$/, "").toLowerCase()));
 const tests = [];

@@ -47,8 +47,8 @@
  * The supported range is that of `JiffTimestamp`. Time zone behaviour comes from the
  * platform; see `JiffTimeZone`. Instances are immutable.
  *
- * Not ported yet: parsing, `strftime` and `strptime`, and the forms of `until` and `since`
- * that round their result.
+ * `strftime` and `strptime` format and parse with `printf`-style format strings; see
+ * `JiffStrtime`. `JiffRfc2822` reads and writes the RFC 2822 format of email.
  *
  * Mirrors `jiff::ZonedDateTime`.
  */
@@ -160,6 +160,89 @@ public class JiffZonedDateTime implements Comparable {
             return null;
         }
         return newInstance(JiffTimestamp.fromSystemDatetime(value), zone);
+    }
+
+    /**
+     * Parses a zoned datetime in the RFC 9557 format that `toString()` prints, such as
+     * `2024-07-04T08:39:00-04:00[America/New_York]`.
+     *
+     *     JiffZonedDateTime.parse('2024-07-04T08:39:00-04:00[America/New_York]');
+     *     JiffZonedDateTime.parse('2024-07-04T08:39:00[America/New_York]');   // offset optional
+     *     JiffZonedDateTime.parse('2024-07-04[America/New_York]');            // midnight
+     *     JiffZonedDateTime.parse('2024-07-04T12:39:00Z[America/New_York]');  // an instant
+     *
+     * The time zone annotation in square brackets is required. Without an offset, a clock
+     * reading in a gap or fold is resolved as `JiffDisambiguation.COMPATIBLE` does. With an
+     * offset, the offset must be one the zone has for that clock reading (which also picks
+     * between the two readings of a fold), or this throws; a `Z` instead names the instant
+     * and the zone only says how to show it. An offset written to the minute matches a zone
+     * offset that has seconds when it equals that offset rounded to the minute.
+     *
+     * Throws `JiffException` when the text is not valid or does not agree with the zone.
+     *
+     * Mirrors `impl FromStr for jiff::ZonedDateTime`. One detail differs: an offset written
+     * with explicit zero seconds (`-00:45:00`) is matched to the minute like `-00:45`, where
+     * Jiff then requires an exact match.
+     */
+    public static JiffZonedDateTime parse(String text) {
+        JiffPieces pieces = JiffPieces.parse(text);
+        JiffPiecesTimeZoneAnnotation annotation = pieces.timeZoneAnnotation();
+        if (annotation == null) {
+            throw new JiffException(
+                'failed to find time zone annotation in square brackets, ' +
+                'which is required for parsing a zoned datetime'
+            );
+        }
+        JiffTimeZone tz = annotation.toTimeZone();
+        JiffTime clock = pieces.toTime();
+        JiffDateTime dt = JiffDateTime.fromParts(
+            pieces.toDate(),
+            clock == null ? JiffTime.midnight() : clock
+        );
+        JiffPiecesOffset written = pieces.offset();
+        JiffAmbiguousZonedDateTime ambiguous;
+        if (written == null) {
+            ambiguous = tz.toAmbiguousZonedDateTime(dt);
+        } else if (written.isZulu()) {
+            ambiguous = JiffOffsetConflicts.resolve(
+                JiffOffsetConflict.ALWAYS_OFFSET,
+                dt,
+                JiffOffset.UTC,
+                tz
+            );
+        } else {
+            ambiguous = JiffOffsetConflicts.resolveWith(
+                JiffOffsetConflict.REJECT,
+                dt,
+                written.toNumericOffset(),
+                tz,
+                new MinuteEquality()
+            );
+        }
+        return ambiguous.compatible();
+    }
+
+    /**
+     * Text offsets usually stop at the minute. A written offset matches a zone offset with
+     * seconds when it equals that offset rounded to the minute, unless the text itself had
+     * seconds.
+     */
+    private class MinuteEquality implements JiffOffsetConflicts.Equality {
+        public Boolean isEqual(JiffOffset given, JiffOffset candidate) {
+            if (given.equals(candidate)) {
+                return true;
+            }
+            if (Math.mod(candidate.seconds(), 60) == 0 || Math.mod(given.seconds(), 60) != 0) {
+                return false;
+            }
+            try {
+                return given.equals(candidate.round(JiffUnit.MINUTE));
+            } catch (JiffException e) {
+                // Rounding the largest offsets can leave the range; then only an exact match
+                // counts, and that has already failed.
+                return false;
+            }
+        }
     }
 
     /**
@@ -785,6 +868,61 @@ public class JiffZonedDateTime implements Comparable {
     }
 
     /**
+     * The span from this zoned datetime until `other`, with the units and rounding `options`
+     * ask for.
+     *
+     * The smallest unit defaults to `NANOSECOND`, and the largest to the bigger of `HOUR` and
+     * the smallest unit. When the smallest unit is bigger than a nanosecond, or the increment
+     * is not 1, the difference is rounded as `JiffSpan.round` does, measured from this zoned
+     * datetime, so a day containing a change of offset has its real length.
+     *
+     *     // 2024-03-10 is 23 hours long in New York.
+     *     JiffZonedDateTime zdt1 = JiffDate.newInstance(2024, 3, 10).inTz('America/New_York');
+     *     JiffZonedDateTime zdt2 = JiffDate.newInstance(2024, 3, 10).at(23, 30, 0, 0).inTz('America/New_York');
+     *     zdt1.until(zdt2);   // PT22H30M
+     *     zdt1.until(zdt2, new JiffDifference().smallest(JiffUnit.DAY).mode(JiffRoundMode.HALF_EXPAND));
+     *     // P1D
+     *
+     * Throws when the time zones differ and the largest unit is a day or bigger, the
+     * increment is not valid for the smallest unit, the largest unit is smaller than the
+     * smallest, or the result does not fit.
+     *
+     * Mirrors `ZonedDateTime::until` with a `ZonedDateTimeDifference`.
+     */
+    public JiffSpan until(JiffZonedDateTime other, JiffDifference options) {
+        return difference(other, options, false);
+    }
+
+    /**
+     * The span from `other` until this zoned datetime, with the units and rounding `options`
+     * ask for. This is `until(other, options)` before rounding, negated; the rounding is then
+     * measured from this zoned datetime. See `until(JiffZonedDateTime, JiffDifference)`.
+     *
+     * Mirrors `ZonedDateTime::since` with a `ZonedDateTimeDifference`.
+     */
+    public JiffSpan since(JiffZonedDateTime other, JiffDifference options) {
+        return difference(other, options, true);
+    }
+
+    private JiffSpan difference(JiffZonedDateTime other, JiffDifference options, Boolean negate) {
+        JiffDifference config = options == null ? new JiffDifference() : options;
+        JiffUnit smallest = config.getSmallest() == null
+            ? JiffUnit.NANOSECOND
+            : config.getSmallest();
+        JiffUnit largest = config.getLargest() == null
+            ? JiffMath.largerOf(smallest, JiffUnit.HOUR)
+            : config.getLargest();
+        JiffSpan span = until(other, largest);
+        return JiffSpanRelative.roundDifference(
+            negate ? span.negate() : span,
+            config,
+            smallest,
+            JiffSpanRelativeTo.fromZonedDateTime(this),
+            false
+        );
+    }
+
+    /**
      * The exact length of time from this zoned datetime until `other`. It is negative when
      * `other` is earlier. This never fails, and the time zones play no part.
      *
@@ -949,6 +1087,44 @@ public class JiffZonedDateTime implements Comparable {
     /** A hash of the instant, consistent with `equals`. */
     public Integer hashCode() {
         return ts.hashCode();
+    }
+
+    // ---- strftime / strptime ------------------------------------------------
+
+    /**
+     * Parses a zoned datetime from `input` according to the `strptime` format `format`. The
+     * conversion specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffZonedDateTime.strptime('%F %H:%M %:Q', '2024-07-14 21:14 America/New_York');
+     *     // 2024-07-14T21:14:00-04:00[America/New_York]
+     *
+     * Throws `JiffException` when the format is invalid, when the input does not match it, or
+     * when the input has neither an offset (`%z`) nor an IANA time zone identifier (`%Q`), or
+     * the two disagree.
+     *
+     * Without `%Q` the zoned datetime has a fixed offset time zone, which does not follow
+     * daylight saving time in arithmetic. Use `%Q` (or `%:Q`) to round trip the time zone.
+     *
+     * Mirrors `jiff::ZonedDateTime::strptime`.
+     */
+    public static JiffZonedDateTime strptime(String format, String input) {
+        return JiffStrtime.parse(format, input).toZonedDateTime();
+    }
+
+    /**
+     * Formats this zoned datetime according to the `strftime` format `format`. The conversion
+     * specifiers are listed in `JiffStrtime`.
+     *
+     *     zdt.strftime('%a %b %e %I:%M:%S %p %Z %Y');   // Mon Jul 15 04:24:59 PM EDT 2024
+     *
+     * This never throws for a non-null format. A specifier that cannot be applied, such as
+     * a `%` at the very end, or an unknown one, is written out literally. To have such mistakes
+     * reported instead, use `JiffStrtime.format`.
+     *
+     * Mirrors `jiff::ZonedDateTime::strftime`.
+     */
+    public String strftime(String format) {
+        return JiffStrtime.formatLenient(format, JiffBrokenDownTime.fromZonedDateTime(this));
     }
 
     /**

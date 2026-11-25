@@ -248,7 +248,7 @@ pub fn arithmetic_rows(rng: &mut Rng) -> Vec<String> {
 }
 
 pub fn round_rows(rng: &mut Rng) -> Vec<String> {
-    (0..300)
+    let mut rows: Vec<String> = (0..300)
         .map(|_| {
             let duration = arbitrary(rng);
             let &(unit, unit_name) = rng.pick(UNITS);
@@ -265,7 +265,54 @@ pub fn round_rows(rng: &mut Rng) -> Vec<String> {
                 optional(rounded)
             )
         })
-        .collect()
+        .collect();
+    rows.extend(tie_rows());
+    rows
+}
+
+/// Nanoseconds in one of each unit in `UNITS`.
+const NANOS_PER_UNIT: [i128; 6] = [
+    1,
+    1_000,
+    1_000_000,
+    1_000_000_000,
+    60_000_000_000,
+    3_600_000_000_000,
+];
+
+/// Durations exactly halfway between two multiples of the rounding step, in
+/// every mode, for an even and an odd multiple on each side of zero. These are the only inputs on
+/// which the five `HALF_*` modes disagree, and random durations almost never
+/// land on them. Built without the random stream, so that adding them leaves
+/// every other vector as it was.
+fn tie_rows() -> Vec<String> {
+    let mut rows = Vec::new();
+    for (index, &(unit, unit_name)) in UNITS.iter().enumerate() {
+        for increment in [1_i64, 2, 15] {
+            let step = NANOS_PER_UNIT[index] * i128::from(increment);
+            if step % 2 != 0 {
+                continue;
+            }
+            for multiple in [0_i128, 1, -1, -2, 4_611_686_018_427] {
+                let nanos = multiple * step + step / 2;
+                let Some(duration) = SignedDuration::try_from_nanos_i128(nanos) else {
+                    continue;
+                };
+                for &(mode, mode_name) in MODES {
+                    let options = SignedDurationRound::new()
+                        .smallest(unit)
+                        .increment(increment)
+                        .mode(mode);
+                    rows.push(format!(
+                        "{}|{unit_name}|{increment}|{mode_name}|{}",
+                        parts(duration),
+                        optional(duration.round(options).ok())
+                    ));
+                }
+            }
+        }
+    }
+    rows
 }
 
 fn text_row(duration: SignedDuration) -> String {

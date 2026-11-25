@@ -158,12 +158,84 @@ private class JiffSpanTest {
             new JiffSpan().days(1).multiply(JiffMath.LONG_MIN);
             Assert.fail('expected an overflow');
         } catch (JiffException e) {
-            Assert.areEqual('span multiple overflowed', e.getMessage());
+            // Jiff: 1.day().checked_mul(i64::MIN).
+            assertRangeError('span multiple', JiffMath.LONG_MAX, e.getMessage());
+        }
+        // Jiff: Span::new().checked_mul(i64::MIN) is the zero span, because a zero span is
+        // answered before the multiple is looked at.
+        Assert.isTrue(new JiffSpan().multiply(JiffMath.LONG_MIN).isZero());
+        // Jiff: 1.day().checked_mul(i64::MIN + 1) is past the limit for days.
+        try {
+            new JiffSpan().days(1).multiply(-JiffMath.LONG_MAX);
+            Assert.fail('expected an overflow');
+        } catch (JiffException e) {
+            assertRangeError('days', 7304484L, e.getMessage());
         }
         Assert.areEqual(
             JiffMath.LONG_MAX,
             new JiffSpan().nanoseconds(1).multiply(JiffMath.LONG_MAX).getNanoseconds()
         );
+    }
+
+    private static String tryMultiply(JiffSpan span, Long factor) {
+        try {
+            return span.multiply(factor).toString();
+        } catch (JiffException e) {
+            return e.getMessage();
+        }
+    }
+
+    private static String rangeText(String unit, Long max) {
+        return 'parameter \'' + unit + '\' is not in the required range of -' + max + '..=' + max;
+    }
+
+    @IsTest
+    static void multiplyingPastSeveralLimitsReportsTheLargestUnit() {
+        // Jiff checks years first and nanoseconds last, so when more than one unit of a span
+        // overflows, the error names the largest. Each expected message is what
+        // Span::checked_mul returns in Jiff 1.0.0 for the same span and multiple.
+        Assert.areEqual(
+            rangeText('days', 7304484L),
+            tryMultiply(new JiffSpan().hours(-175307616).days(-4213602), 2L)
+        );
+        Assert.areEqual(
+            rangeText('years', 19998L),
+            tryMultiply(new JiffSpan().years(19998).hours(-32543), 97652L)
+        );
+        Assert.areEqual(
+            rangeText('years', 19998L),
+            tryMultiply(new JiffSpan().years(12).days(15), 7304484L)
+        );
+        Assert.areEqual(
+            rangeText('hours', 175307616L),
+            tryMultiply(new JiffSpan().hours(2).minutes(3), 200000000000L)
+        );
+        Assert.areEqual(
+            rangeText('years', 19998L),
+            tryMultiply(new JiffSpan().years(1).nanoseconds(5), JiffMath.LONG_MAX)
+        );
+        Assert.areEqual(
+            rangeText('years', 19998L),
+            tryMultiply(new JiffSpan().years(1).months(1), -19999L)
+        );
+        Assert.areEqual(
+            rangeText('months', 239976L),
+            tryMultiply(new JiffSpan().months(1).weeks(1), 1043498L)
+        );
+        Assert.areEqual(
+            rangeText('seconds', 631107417600L),
+            tryMultiply(new JiffSpan().seconds(2).milliseconds(3), 631107417600L)
+        );
+        Assert.areEqual(
+            rangeText('microseconds', 631107417600000000L),
+            tryMultiply(new JiffSpan().microseconds(2).nanoseconds(3), 4611686018427387904L)
+        );
+        Assert.areEqual(
+            rangeText('nanoseconds', JiffMath.LONG_MAX),
+            tryMultiply(new JiffSpan().nanoseconds(5), JiffMath.LONG_MAX)
+        );
+        // Within every limit the units keep their places.
+        Assert.areEqual('-P19998Y29997M', tryMultiply(new JiffSpan().years(2).months(3), -9999L));
     }
 
     @IsTest
@@ -300,6 +372,98 @@ private class JiffSpanTest {
         } catch (JiffException e) {
             assertRangeError('milliseconds', 631107417600000L, e.getMessage());
         }
+    }
+
+    private static String tryFromInvariant(JiffUnit largest, JiffSignedDuration duration) {
+        try {
+            return JiffSpan.fromInvariantDuration(largest, duration).toString();
+        } catch (JiffException e) {
+            return e.getMessage();
+        }
+    }
+
+    @IsTest
+    static void theMostExtremeDurationsAreRejectedForSubSecondUnits() {
+        // Jiff's Span::from_invariant_duration converts the duration to a 128 bit count of
+        // the unit and fails with that unit's range error when it does not fit. The seconds
+        // of these durations have no absolute value in 64 bits, which must not be mistaken
+        // for a small number.
+        List<JiffSignedDuration> extremes = new List<JiffSignedDuration>{
+            JiffSignedDuration.MIN,
+            JiffSignedDuration.newInstance(JiffMath.LONG_MIN, 0),
+            JiffSignedDuration.newInstance(-JiffMath.LONG_MAX, 0),
+            JiffSignedDuration.MAX,
+            JiffSignedDuration.newInstance(JiffMath.LONG_MAX, 0)
+        };
+        for (JiffSignedDuration extreme : extremes) {
+            Assert.areEqual(
+                rangeText('milliseconds', 631107417600000L),
+                tryFromInvariant(JiffUnit.MILLISECOND, extreme),
+                'milliseconds of ' + extreme
+            );
+            Assert.areEqual(
+                rangeText('microseconds', 631107417600000000L),
+                tryFromInvariant(JiffUnit.MICROSECOND, extreme),
+                'microseconds of ' + extreme
+            );
+            Assert.areEqual(
+                rangeText('nanoseconds', JiffMath.LONG_MAX),
+                tryFromInvariant(JiffUnit.NANOSECOND, extreme),
+                'nanoseconds of ' + extreme
+            );
+        }
+    }
+
+    @IsTest
+    static void nanosecondsStopExactlyAtTheLargestLong() {
+        // i64::MAX nanoseconds is 9223372036.854775807 seconds, and it is the limit in both
+        // directions.
+        Assert.areEqual(
+            JiffMath.LONG_MAX,
+            JiffSpan.fromInvariantDuration(
+                    JiffUnit.NANOSECOND,
+                    JiffSignedDuration.newInstance(9223372036L, 854775807)
+                )
+                .getNanoseconds()
+        );
+        Assert.areEqual(
+            -JiffMath.LONG_MAX,
+            JiffSpan.fromInvariantDuration(
+                    JiffUnit.NANOSECOND,
+                    JiffSignedDuration.newInstance(-9223372036L, -854775807)
+                )
+                .getNanoseconds()
+        );
+        // Anything past it is out of range. One past the limit is the least interesting
+        // probe: a sum that wrapped around would land on Long.MIN there and be rejected for
+        // the wrong reason, so the probes go further.
+        List<Integer> subseconds = new List<Integer>{ 854775808, 854775809, 999999999 };
+        for (Integer subsecond : subseconds) {
+            Assert.areEqual(
+                rangeText('nanoseconds', JiffMath.LONG_MAX),
+                tryFromInvariant(
+                    JiffUnit.NANOSECOND,
+                    JiffSignedDuration.newInstance(9223372036L, subsecond)
+                ),
+                'subsecond ' + subsecond
+            );
+            Assert.areEqual(
+                rangeText('nanoseconds', JiffMath.LONG_MAX),
+                tryFromInvariant(
+                    JiffUnit.NANOSECOND,
+                    JiffSignedDuration.newInstance(-9223372036L, -subsecond)
+                ),
+                'subsecond -' + subsecond
+            );
+        }
+        Assert.areEqual(
+            rangeText('nanoseconds', JiffMath.LONG_MAX),
+            tryFromInvariant(JiffUnit.NANOSECOND, JiffSignedDuration.fromSecs(9223372037L))
+        );
+        Assert.areEqual(
+            rangeText('nanoseconds', JiffMath.LONG_MAX),
+            tryFromInvariant(JiffUnit.NANOSECOND, JiffSignedDuration.fromSecs(-9223372037L))
+        );
     }
 
     @IsTest

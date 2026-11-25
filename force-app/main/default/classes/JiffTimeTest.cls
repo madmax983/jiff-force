@@ -167,13 +167,9 @@ private class JiffTimeTest {
     }
 
     @IsTest
-    static void rejectsANullPlatformTime() {
-        try {
-            JiffTime.fromSystemTime(null);
-            Assert.fail('expected a null platform time to be rejected');
-        } catch (JiffException e) {
-            Assert.areEqual('cannot convert a null system time to a `JiffTime`', e.getMessage());
-        }
+    static void aNullPlatformTimeGivesNull() {
+        Time empty = null;
+        Assert.isNull(JiffTime.fromSystemTime(empty));
     }
 
     @IsTest

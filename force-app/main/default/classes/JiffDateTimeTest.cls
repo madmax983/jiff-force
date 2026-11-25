@@ -118,10 +118,24 @@ private class JiffDateTimeTest {
         );
         Assert.areEqual(JiffDateTime.MIN, JiffDateTime.fromEpochSecond(-377705116800L, 0));
         Assert.areEqual(JiffDateTime.MAX, JiffDateTime.fromEpochSecond(253402300799L, 999999999));
-        for (Long second = -377705116800L; second <= 253402300799L; second += 86028121L * 997) {
+        // About a thousand samples over every century and time of day, each checked against a
+        // value built from the separately tested epoch day and plain arithmetic.
+        for (Long second = -377705116800L; second <= 253402300799L; second += 86028121L * 7) {
+            Long epochDay = JiffMath.floorDiv(second, 86400L);
+            Integer secondOfDay = (second - epochDay * 86400L).intValue();
+            JiffDate d = JiffDate.fromEpochDay(epochDay);
+            JiffDateTime expected = JiffDateTime.newInstance(
+                d.year(),
+                d.month(),
+                d.day(),
+                secondOfDay / 3600,
+                Math.mod(secondOfDay / 60, 60),
+                Math.mod(secondOfDay, 60),
+                7
+            );
             JiffDateTime dt = JiffDateTime.fromEpochSecond(second, 7);
+            Assert.areEqual(expected, dt, 'from epoch second ' + second);
             Assert.areEqual(second, dt.toEpochSecond(), 'round trip of ' + dt);
-            Assert.areEqual(7, dt.subsecNanosecond());
         }
     }
 
@@ -569,7 +583,7 @@ private class JiffDateTimeTest {
 
     @IsTest
     static void readsAPlatformDatetimeOnTheWallClockOfAZone() {
-        Datetime value = Datetime.newInstanceGmt(2024, 7, 4, 12, 39, 0);
+        Datetime value = Datetime.newInstance(1720096740000L);
         Assert.areEqual(
             civil(2024, 7, 4, 8, 39, 0, 0),
             JiffDateTime.fromSystemDatetime(value, JiffTimeZone.get('America/New_York'))
@@ -612,7 +626,7 @@ private class JiffDateTimeTest {
     static void convertsToAPlatformDatetimeInAZone() {
         JiffTimeZone newYork = JiffTimeZone.get('America/New_York');
         Assert.areEqual(
-            Datetime.newInstanceGmt(2024, 7, 4, 12, 39, 0),
+            Datetime.newInstance(1720096740000L),
             civil(2024, 7, 4, 8, 39, 0, 0).toSystemDatetime(newYork)
         );
         // A skipped time moves forward by the length of the gap: 03:30 at -04.

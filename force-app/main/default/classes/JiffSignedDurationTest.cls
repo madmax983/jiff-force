@@ -281,6 +281,302 @@ private class JiffSignedDurationTest {
         }
     }
 
+    // What Jiff 1.0.0 reports for a float that is not a number, and for one that is a number
+    // but too large. The second prints its bounds as floats, hence the rounded digits.
+    private static final String NON_FINITE = 'could not convert non-finite floating point seconds to signed duration (floating point seconds must be finite)';
+    private static final String FLOAT_RANGE = 'parameter \'floating point seconds\' is not in the required range of -9223372036854776000..=9223372036854776000';
+
+    private static Double dbl(String text) {
+        return Double.valueOf(text);
+    }
+
+    /** An infinity made by arithmetic rather than parsed, as a caller's own overflow would. */
+    private static Double overflowedToInfinity() {
+        Double big = 1;
+        for (Integer i = 0; i < 200; i++) {
+            big = big * 10;
+        }
+        return big * big;
+    }
+
+    @IsTest
+    static void fractionalSecondsThatAreNotFiniteAreRejected() {
+        // SignedDuration::try_from_secs_f64(f64::NAN / INFINITY / NEG_INFINITY) all return
+        // the same error in Jiff.
+        List<Double> notFinite = new List<Double>{
+            dbl('NaN'),
+            dbl('Infinity'),
+            dbl('-Infinity'),
+            overflowedToInfinity(),
+            -overflowedToInfinity()
+        };
+        for (Double bad : notFinite) {
+            try {
+                JiffSignedDuration.fromSecsDouble(bad);
+                Assert.fail('expected ' + bad + ' to be rejected');
+            } catch (JiffException e) {
+                Assert.areEqual(NON_FINITE, e.getMessage());
+            }
+        }
+    }
+
+    @IsTest
+    static void multiplyingOrDividingByANonFiniteNumberIsRejected() {
+        // from_secs(1).mul_f64(NAN), .div_f64(NAN), .mul_f64(INFINITY), .mul_f64(NEG_INFINITY)
+        // and ZERO.mul_f64(INFINITY) (zero times infinity is NaN) all panic in Jiff with the
+        // non-finite error.
+        Double nan = dbl('NaN');
+        Double inf = dbl('Infinity');
+        JiffSignedDuration one = d(1L, 0);
+        List<String> messages = new List<String>();
+        try {
+            one.multiplyDouble(nan);
+        } catch (JiffException e) {
+            messages.add(e.getMessage());
+        }
+        try {
+            one.divideDouble(nan);
+        } catch (JiffException e) {
+            messages.add(e.getMessage());
+        }
+        try {
+            one.multiplyDouble(inf);
+        } catch (JiffException e) {
+            messages.add(e.getMessage());
+        }
+        try {
+            one.multiplyDouble(-inf);
+        } catch (JiffException e) {
+            messages.add(e.getMessage());
+        }
+        try {
+            JiffSignedDuration.ZERO.multiplyDouble(inf);
+        } catch (JiffException e) {
+            messages.add(e.getMessage());
+        }
+        try {
+            JiffSignedDuration.ZERO.multiplyDouble(overflowedToInfinity());
+        } catch (JiffException e) {
+            messages.add(e.getMessage());
+        }
+        Assert.areEqual(
+            new List<String>{
+                NON_FINITE,
+                NON_FINITE,
+                NON_FINITE,
+                NON_FINITE,
+                NON_FINITE,
+                NON_FINITE
+            },
+            messages
+        );
+        // Dividing by an infinity is fine: from_secs(1).div_f64(INFINITY) is zero in Jiff.
+        assertParts(0L, 0, one.divideDouble(inf));
+        assertParts(0L, 0, one.divideDouble(-inf));
+    }
+
+    @IsTest
+    static void fractionalSecondsSaturateAtExactlyTwoToTheSixtyThird() {
+        // 2^63 is `i64::MAX as f64`, so Jiff accepts it and its cast saturates:
+        // try_from_secs_f64(9223372036854775808.0) is (i64::MAX, 0) and the negation is
+        // (i64::MIN, 0).
+        Double twoTo63 = dbl('9223372036854775808');
+        assertParts(JiffMath.LONG_MAX, 0, JiffSignedDuration.fromSecsDouble(twoTo63));
+        assertParts(JiffMath.LONG_MIN, 0, JiffSignedDuration.fromSecsDouble(-twoTo63));
+        Assert.isTrue(JiffSignedDuration.fromSecsDouble(twoTo63).isPositive());
+        Assert.isTrue(JiffSignedDuration.fromSecsDouble(-twoTo63).isNegative());
+        // The floats next to 2^63 on the inside are whole seconds a Long holds exactly.
+        Double justInside = dbl('9223372036854774784');
+        assertParts(9223372036854774784L, 0, JiffSignedDuration.fromSecsDouble(justInside));
+        assertParts(-9223372036854774784L, 0, JiffSignedDuration.fromSecsDouble(-justInside));
+        // The floats next to it on the outside are out of range, like everything beyond.
+        List<Double> outside = new List<Double>{
+            dbl('9223372036854777856'),
+            dbl('-9223372036854777856'),
+            dbl('9.3e18'),
+            dbl('-9.3e18'),
+            dbl('1e30'),
+            dbl('-1e30')
+        };
+        for (Double bad : outside) {
+            try {
+                JiffSignedDuration.fromSecsDouble(bad);
+                Assert.fail('expected ' + bad + ' to be out of range');
+            } catch (JiffException e) {
+                Assert.areEqual(FLOAT_RANGE, e.getMessage());
+            }
+        }
+    }
+
+    @IsTest
+    static void floatArithmeticOnTheLargestDurationsSaturatesAsInJiff() {
+        Double one = 1;
+        Double two = 2;
+        Double billion = 1000000000;
+        // MAX and MIN as float seconds are exactly 2^63 and -2^63.
+        Assert.areEqual(dbl('9223372036854775808'), JiffSignedDuration.MAX.asSecsDouble());
+        Assert.areEqual(dbl('-9223372036854775808'), JiffSignedDuration.MIN.asSecsDouble());
+        // Jiff: MAX.mul_f64(1.0), MAX.div_f64(1.0), MIN.mul_f64(-1.0), MIN.div_f64(-1.0),
+        // from_secs(4611686018427387904).mul_f64(2.0) and
+        // new(9223372036, 854775807).mul_f64(1e9) are all (i64::MAX, 0).
+        assertParts(JiffMath.LONG_MAX, 0, JiffSignedDuration.MAX.multiplyDouble(one));
+        assertParts(JiffMath.LONG_MAX, 0, JiffSignedDuration.MAX.divideDouble(one));
+        assertParts(JiffMath.LONG_MAX, 0, JiffSignedDuration.MIN.multiplyDouble(-one));
+        assertParts(JiffMath.LONG_MAX, 0, JiffSignedDuration.MIN.divideDouble(-one));
+        assertParts(
+            JiffMath.LONG_MAX,
+            0,
+            JiffSignedDuration.fromSecs(4611686018427387904L).multiplyDouble(two)
+        );
+        assertParts(JiffMath.LONG_MAX, 0, d(9223372036L, 854775807).multiplyDouble(billion));
+        // Jiff: MIN.mul_f64(1.0) and from_secs(-4611686018427387904).mul_f64(2.0) are
+        // (i64::MIN, 0).
+        assertParts(JiffMath.LONG_MIN, 0, JiffSignedDuration.MIN.multiplyDouble(one));
+        assertParts(
+            JiffMath.LONG_MIN,
+            0,
+            JiffSignedDuration.fromSecs(-4611686018427387904L).multiplyDouble(two)
+        );
+        // Jiff: MAX.mul_f64(2.0) and MAX.mul_f64(1.0000000000000002) panic with the range
+        // error.
+        for (Double factor : new List<Double>{ two, dbl('1.0000000000000002'), -two }) {
+            try {
+                JiffSignedDuration.MAX.multiplyDouble(factor);
+                Assert.fail('expected MAX * ' + factor + ' to be out of range');
+            } catch (JiffException e) {
+                Assert.areEqual(FLOAT_RANGE, e.getMessage());
+            }
+        }
+    }
+
+    @IsTest
+    static void fractionalSecondsRoundToTheNearestNanosecondWithTiesAwayFromZero() {
+        // Every expected value is what SignedDuration::try_from_secs_f64 returns in Jiff 1.0.0.
+        // The largest float below half a nanosecond rounds down; adding 0.5 and truncating
+        // would round it up.
+        assertParts(0L, 0, JiffSignedDuration.fromSecsDouble(dbl('4.999999999999999e-10')));
+        assertParts(0L, 0, JiffSignedDuration.fromSecsDouble(dbl('-4.999999999999999e-10')));
+        assertParts(0L, 0, JiffSignedDuration.fromSecsDouble(dbl('4.9999999999999994e-10')));
+        assertParts(0L, 0, JiffSignedDuration.fromSecsDouble(dbl('-4.9999999999999994e-10')));
+        assertParts(0L, 0, JiffSignedDuration.fromSecsDouble(dbl('1e-10')));
+        assertParts(0L, 0, JiffSignedDuration.fromSecsDouble(dbl('-1e-10')));
+        // Exact halves go away from zero.
+        assertParts(0L, 1, JiffSignedDuration.fromSecsDouble(dbl('5e-10')));
+        assertParts(0L, -1, JiffSignedDuration.fromSecsDouble(dbl('-5e-10')));
+        assertParts(0L, 2, JiffSignedDuration.fromSecsDouble(dbl('1.5e-9')));
+        assertParts(0L, 3, JiffSignedDuration.fromSecsDouble(dbl('2.5e-9')));
+        assertParts(0L, -3, JiffSignedDuration.fromSecsDouble(dbl('-2.5e-9')));
+        // Rounding up to a whole second carries into the seconds.
+        assertParts(1L, 0, JiffSignedDuration.fromSecsDouble(dbl('0.9999999995')));
+        assertParts(-1L, 0, JiffSignedDuration.fromSecsDouble(dbl('-0.9999999995')));
+        assertParts(2L, 0, JiffSignedDuration.fromSecsDouble(dbl('1.9999999996')));
+        assertParts(0L, 999999999, JiffSignedDuration.fromSecsDouble(dbl('0.99999999949')));
+        // Ordinary values, including Jiff's own doc examples.
+        assertParts(0L, 0, JiffSignedDuration.fromSecsDouble(dbl('0')));
+        assertParts(0L, 0, JiffSignedDuration.fromSecsDouble(dbl('-0.0')));
+        assertParts(0L, 500000000, JiffSignedDuration.fromSecsDouble(dbl('0.5')));
+        assertParts(0L, -500000000, JiffSignedDuration.fromSecsDouble(dbl('-0.5')));
+        assertParts(12L, 123456789, JiffSignedDuration.fromSecsDouble(dbl('12.123456789')));
+        assertParts(-12L, -123456789, JiffSignedDuration.fromSecsDouble(dbl('-12.123456789')));
+        // A float cannot hold this many digits; Jiff gives ...328, not ...321.
+        assertParts(
+            123456789L,
+            987654328,
+            JiffSignedDuration.fromSecsDouble(dbl('123456789.987654321'))
+        );
+        // The largest values that still have a fractional part.
+        assertParts(
+            4503599627370495L,
+            500000000,
+            JiffSignedDuration.fromSecsDouble(dbl('4503599627370495.5'))
+        );
+        assertParts(
+            -4503599627370495L,
+            -500000000,
+            JiffSignedDuration.fromSecsDouble(dbl('-4503599627370495.5'))
+        );
+        assertParts(
+            9007199254740992L,
+            0,
+            JiffSignedDuration.fromSecsDouble(dbl('9007199254740993'))
+        );
+    }
+
+    @IsTest
+    static void floatMultiplicationAndDivisionRoundLikeJiff() {
+        Double half = 0.5;
+        Double two = 2;
+        JiffSignedDuration oneNano = d(0L, 1);
+        // Jiff: new(0, 1).mul_f64(0.49999999999999994) and new(0, 1).div_f64(2.0000000000000004)
+        // are zero; with 0.5 and 2.0 they are one nanosecond.
+        assertParts(0L, 0, oneNano.multiplyDouble(dbl('0.49999999999999994')));
+        assertParts(0L, 0, oneNano.negate().multiplyDouble(dbl('0.49999999999999994')));
+        assertParts(0L, 0, oneNano.divideDouble(dbl('2.0000000000000004')));
+        assertParts(0L, 1, oneNano.multiplyDouble(half));
+        assertParts(0L, -1, oneNano.negate().multiplyDouble(half));
+        assertParts(0L, 1, oneNano.divideDouble(two));
+        // Jiff's doc examples for mul_f64 and div_f64.
+        JiffSignedDuration duration = d(12L, 123456789);
+        assertParts(24L, 246913578, duration.multiplyDouble(two));
+        assertParts(-24L, -246913578, duration.multiplyDouble(-two));
+        assertParts(6L, 61728395, duration.divideDouble(two));
+        assertParts(-6L, -61728395, duration.divideDouble(-two));
+    }
+
+    @IsTest
+    static void dividingByAFloatingPointZeroIsRejectedAsInJiff() {
+        // from_secs(5).div_f64(0.0), from_secs(-5).div_f64(0.0), ZERO.div_f64(0.0) and
+        // from_secs(5).div_f64(-0.0) all panic in Jiff with the non-finite error, because the
+        // quotient is an infinity or NaN.
+        Double zero = 0;
+        Double negativeZero = dbl('-0.0');
+        List<JiffSignedDuration> dividends = new List<JiffSignedDuration>{
+            d(5L, 0),
+            d(-5L, 0),
+            JiffSignedDuration.ZERO,
+            JiffSignedDuration.MAX
+        };
+        for (JiffSignedDuration dividend : dividends) {
+            for (Double divisor : new List<Double>{ zero, negativeZero, -zero }) {
+                try {
+                    dividend.divideDouble(divisor);
+                    Assert.fail('expected ' + dividend + ' / ' + divisor + ' to be rejected');
+                } catch (JiffException e) {
+                    Assert.areEqual(NON_FINITE, e.getMessage());
+                }
+            }
+        }
+    }
+
+    @IsTest
+    static void dividingByAZeroDurationThrowsInsteadOfReturningInfinity() {
+        // A deliberate difference: Jiff's div_duration_f64 returns inf, -inf and NaN here.
+        List<JiffSignedDuration> dividends = new List<JiffSignedDuration>{
+            d(5L, 0),
+            d(-5L, 0),
+            d(0L, 1),
+            JiffSignedDuration.ZERO
+        };
+        for (JiffSignedDuration dividend : dividends) {
+            try {
+                dividend.divDuration(JiffSignedDuration.ZERO);
+                Assert.fail('expected ' + dividend + ' / zero to be rejected');
+            } catch (JiffException e) {
+                Assert.areEqual('division of a signed duration by a zero duration', e.getMessage());
+            }
+        }
+        // Everything else matches Jiff: ZERO / 5s is 0, MIN / MAX is -1, and Jiff's doc
+        // example gives 2 and -2.
+        Double zero = 0;
+        Double two = 2;
+        Double one = 1;
+        Assert.areEqual(zero, JiffSignedDuration.ZERO.divDuration(d(5L, 0)));
+        Assert.areEqual(-one, JiffSignedDuration.MIN.divDuration(JiffSignedDuration.MAX));
+        Assert.areEqual(two, d(12L, 600000000).divDuration(d(6L, 300000000)));
+        Assert.areEqual(-two, d(-12L, -600000000).divDuration(d(6L, 300000000)));
+        Assert.areEqual(two, d(-12L, -600000000).divDuration(d(-6L, -300000000)));
+    }
+
     @IsTest
     static void roundsToTimeUnits() {
         JiffSignedDuration duration = d(5L * 3600 + 30 * 60 + 30, 500000000);

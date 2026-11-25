@@ -23,10 +23,13 @@ mod offset;
 mod replay;
 mod rng;
 mod span;
+mod span_relative;
+mod strtime;
 mod text;
 mod time;
 mod timestamp;
 mod zone;
+mod zoned;
 
 use std::path::PathBuf;
 
@@ -150,6 +153,59 @@ const TOPICS: &[Topic] = &[
     ),
     ("TimeZoneOffset", zone::OFFSET_COLUMNS, zone::offset_rows),
     ("TimeZoneCivil", zone::CIVIL_COLUMNS, zone::civil_rows),
+    ("ZonedSpan", zoned::SPAN_COLUMNS, zoned::span_rows),
+    (
+        "ZonedDifference",
+        zoned::DIFFERENCE_COLUMNS,
+        zoned::difference_rows,
+    ),
+    ("ZonedRound", zoned::ROUND_COLUMNS, zoned::round_rows),
+    (
+        "ZonedCalendar",
+        zoned::CALENDAR_COLUMNS,
+        zoned::calendar_rows,
+    ),
+    (
+        "SpanRound",
+        span_relative::ROUND_COLUMNS,
+        span_relative::round_rows,
+    ),
+    (
+        "SpanTotal",
+        span_relative::TOTAL_COLUMNS,
+        span_relative::total_rows,
+    ),
+    (
+        "SpanCompare",
+        span_relative::COMPARE_COLUMNS,
+        span_relative::compare_rows,
+    ),
+    (
+        "SpanArithmetic",
+        span_relative::ARITHMETIC_COLUMNS,
+        span_relative::arithmetic_rows,
+    ),
+    (
+        "DifferenceRound",
+        span_relative::DIFFERENCE_COLUMNS,
+        span_relative::difference_rows,
+    ),
+    (
+        "StrtimeFormat",
+        strtime::FORMAT_COLUMNS,
+        strtime::format_rows,
+    ),
+    ("StrtimeParse", strtime::PARSE_COLUMNS, strtime::parse_rows),
+    (
+        "Rfc2822Parse",
+        strtime::RFC2822_PARSE_COLUMNS,
+        strtime::rfc2822_parse_rows,
+    ),
+    (
+        "Rfc2822Print",
+        strtime::RFC2822_PRINT_COLUMNS,
+        strtime::rfc2822_print_rows,
+    ),
 ];
 
 fn main() -> Result<()> {

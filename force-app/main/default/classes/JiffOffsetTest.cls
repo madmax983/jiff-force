@@ -568,14 +568,20 @@ private class JiffOffsetTest {
 
     @IsTest
     static void roundingCanOverflow() {
-        try {
-            JiffOffset.MAX.round(JiffUnit.MINUTE);
-            Assert.fail('expected an overflow');
-        } catch (JiffException e) {
-            Assert.areEqual(
-                'rounding time zone offset resulted in a duration that overflows: ' + RANGE,
-                e.getMessage()
-            );
+        List<JiffOffset> extremes = new List<JiffOffset>{ JiffOffset.MAX, JiffOffset.MIN };
+        List<JiffUnit> units = new List<JiffUnit>{ JiffUnit.MINUTE, JiffUnit.HOUR };
+        for (JiffOffset offset : extremes) {
+            for (JiffUnit unit : units) {
+                try {
+                    offset.round(unit);
+                    Assert.fail('expected rounding ' + offset + ' to the ' + unit + ' to overflow');
+                } catch (JiffException e) {
+                    Assert.areEqual(
+                        'rounding time zone offset resulted in a duration that overflows: ' + RANGE,
+                        e.getMessage()
+                    );
+                }
+            }
         }
     }
 

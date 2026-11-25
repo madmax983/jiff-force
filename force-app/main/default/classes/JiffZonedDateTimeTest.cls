@@ -863,7 +863,7 @@ private class JiffZonedDateTimeTest {
 
     @IsTest
     static void convertsAPlatformDatetimeInAGivenZone() {
-        Datetime value = Datetime.newInstanceGmt(2024, 7, 4, 11, 39, 0);
+        Datetime value = Datetime.newInstance(1720093140000L);
         JiffZonedDateTime zdt = JiffZonedDateTime.fromSystemDatetime(
             value,
             JiffTimeZone.get(NEW_YORK)
@@ -878,7 +878,7 @@ private class JiffZonedDateTimeTest {
 
     @IsTest
     static void convertsAPlatformDatetimeInTheUsersZone() {
-        Datetime value = Datetime.newInstanceGmt(2024, 7, 4, 11, 39, 0);
+        Datetime value = Datetime.newInstance(1720093140000L);
         JiffZonedDateTime zdt = JiffZonedDateTime.fromSystemDatetime(value);
         Assert.areEqual(1720093140L, zdt.toTimestamp().asSecond());
         Assert.areEqual(JiffTimeZone.userTimeZone(), zdt.timeZone());
@@ -910,7 +910,7 @@ private class JiffZonedDateTimeTest {
     @IsTest
     static void convertsToAPlatformDatetime() {
         JiffZonedDateTime zdt = newYork(2024, 7, 4, 7, 39, 0, 0);
-        Assert.areEqual(Datetime.newInstanceGmt(2024, 7, 4, 11, 39, 0), zdt.toSystemDatetime());
+        Assert.areEqual(Datetime.newInstance(1720093140000L), zdt.toSystemDatetime());
         Assert.areEqual(zdt, JiffZonedDateTime.fromSystemDatetime(zdt.toSystemDatetime()));
     }
 

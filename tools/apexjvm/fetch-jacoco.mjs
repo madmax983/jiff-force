@@ -24,11 +24,35 @@ const lib = path.join(path.dirname(fileURLToPath(import.meta.url)), "lib");
 fs.mkdirSync(lib, { recursive: true });
 const printOnly = process.argv.includes("--print-checksums");
 
+/**
+ * Downloads `url`, retrying when Maven Central rate limits (429) or has a
+ * transient server error. Waits as long as Retry-After asks, or backs off
+ * exponentially, for up to five attempts.
+ */
+async function download(url) {
+    for (let attempt = 1; ; attempt++) {
+        const response = await fetch(url);
+        if (response.ok) return Buffer.from(await response.arrayBuffer());
+        const retryable = response.status === 429 || response.status >= 500;
+        if (!retryable || attempt === 5) throw new Error(`${url}: HTTP ${response.status}`);
+        const retryAfter = Number(response.headers.get("retry-after"));
+        const seconds = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 2 ** attempt;
+        console.log(`${url}: HTTP ${response.status}, retrying in ${seconds}s`);
+        await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+    }
+}
+
 for (const jar of JARS) {
     const target = path.join(lib, jar.file);
-    const response = await fetch(jar.url);
-    if (!response.ok) throw new Error(`${jar.url}: HTTP ${response.status}`);
-    const bytes = Buffer.from(await response.arrayBuffer());
+    // A jar already present (for example restored from a CI cache) is reused if it is intact.
+    if (!printOnly && fs.existsSync(target)) {
+        const existing = crypto.createHash("sha256").update(fs.readFileSync(target)).digest("hex");
+        if (existing === jar.sha256) {
+            console.log(`${jar.file} already present`);
+            continue;
+        }
+    }
+    const bytes = await download(jar.url);
     const actual = crypto.createHash("sha256").update(bytes).digest("hex");
     if (printOnly) {
         console.log(`${jar.file} ${actual}`);

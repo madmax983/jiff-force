@@ -681,7 +681,7 @@ private class JiffDateTimeArithmeticTest {
         // Flipping the datetimes is fine, but you'll get a negative span.
         Assert.areEqual(new JiffSpan().days(-4542).hours(-22).minutes(-30), later.until(earlier));
         // A missing unit means days too.
-        Assert.areEqual(earlier.until(later), earlier.until(later, null));
+        Assert.areEqual(earlier.until(later), earlier.until(later, (JiffUnit) null));
     }
 
     @IsTest
@@ -808,6 +808,17 @@ private class JiffDateTimeArithmeticTest {
         String outOfRange = 'ERR:' + ERROR_TEXT.get('nanos');
         Assert.areEqual(outOfRange, tryUntil(start, tooFar, JiffUnit.NANOSECOND));
         Assert.areEqual(outOfRange, tryUntil(tooFar, start, JiffUnit.NANOSECOND));
+        // Further out too: a sum that wrapped around a Long would land on a legal negative
+        // count here, where one past the limit wraps to the one value that is still rejected.
+        List<JiffDateTime> furtherOut = new List<JiffDateTime>{
+            civil(2292, 4, 10, 23, 47, 16, 854775809),
+            civil(2292, 4, 10, 23, 47, 16, 999999999),
+            civil(2292, 4, 10, 23, 47, 17, 0)
+        };
+        for (JiffDateTime far : furtherOut) {
+            Assert.areEqual(outOfRange, tryUntil(start, far, JiffUnit.NANOSECOND), 'until ' + far);
+            Assert.areEqual(outOfRange, tryUntil(far, start, JiffUnit.NANOSECOND), 'from ' + far);
+        }
         try {
             JiffSpan unexpected = start.since(tooFar, JiffUnit.NANOSECOND);
             Assert.fail('expected the difference not to fit, but got ' + unexpected);
@@ -1067,19 +1078,19 @@ private class JiffDateTimeArithmeticTest {
         JiffDateTime earlier = civil(2006, 8, 24, 22, 30, 0, 0);
         JiffDateTime later = atHour(2019, 1, 31, 21);
         // A missing unit means days, as it does for `until`.
-        Assert.areEqual(later.since(earlier), later.since(earlier, null));
+        Assert.areEqual(later.since(earlier), later.since(earlier, (JiffUnit) null));
         Assert.areEqual(
             new JiffSpan().days(4542).hours(22).minutes(30),
-            later.since(earlier, null)
+            later.since(earlier, (JiffUnit) null)
         );
         Assert.areEqual(
             new JiffSpan().days(-4542).hours(-22).minutes(-30),
-            earlier.since(later, null)
+            earlier.since(later, (JiffUnit) null)
         );
-        Assert.areEqual(later.since(earlier, JiffUnit.DAY), later.since(earlier, null));
+        Assert.areEqual(later.since(earlier, JiffUnit.DAY), later.since(earlier, (JiffUnit) null));
         Assert.areEqual(
             '-P2913114DT8H37M14.999999999S',
-            civil(2024, 2, 29, 15, 22, 45, 0).since(JiffDateTime.MAX, null).toString()
+            civil(2024, 2, 29, 15, 22, 45, 0).since(JiffDateTime.MAX, (JiffUnit) null).toString()
         );
     }
 

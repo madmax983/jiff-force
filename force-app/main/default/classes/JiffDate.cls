@@ -186,18 +186,26 @@ public class JiffDate implements Comparable {
     }
 
     /**
-     * Converts a platform `Date` to a `JiffDate` with the same year, month and day.
+     * Converts a platform `Date`, such as a record's date field, to a `JiffDate` for the same
+     * day. A null `Date`, such as an empty field, gives null.
      *
-     * Throws if the platform date has no counterpart here. That can only happen far from the
-     * present: a year outside `-9999..9999`, or a day that exists in the platform's calendar
-     * but not in the proleptic Gregorian one. The platform switches to the Julian calendar
-     * before 15 October 1582, where for example 29 February 1500 is a real day.
+     *     JiffDate closeDate = JiffDate.fromSystemDate(opportunity.CloseDate);
+     *
+     * The conversion goes through the day's position on the timeline rather than through
+     * `year()`, `month()` and `day()`, so it gives the same answer whatever the running user's
+     * locale and time zone. That matters: for a user whose locale uses the Buddhist calendar
+     * (`th_TH`), the platform reports the year of 29 February 2024 as 2567.
+     *
+     * The platform calendar is Julian before 15 October 1582. A platform date before then is
+     * converted to the same day on the timeline, which the proleptic Gregorian calendar used
+     * here may number differently. Throws if the day is outside the supported range.
      */
     public static JiffDate fromSystemDate(Date value) {
         if (value == null) {
-            throw new JiffException('the system Date to convert must not be null');
+            return null;
         }
-        return newInstance(value.year(), value.month(), value.day());
+        Long millis = Datetime.newInstanceGmt(value, Time.newInstance(0, 0, 0, 0)).getTime();
+        return fromEpochDay(JiffMath.floorDiv(millis, JiffMath.MILLIS_PER_CIVIL_DAY));
     }
 
     /**
@@ -489,22 +497,17 @@ public class JiffDate implements Comparable {
     }
 
     /**
-     * Converts this date to a platform `Date` with the same year, month and day.
+     * Converts this date to a platform `Date` for the same day, for example to store it in a
+     * record's date field. The inverse of `fromSystemDate`.
      *
-     * The platform calendar is Gregorian from 15 October 1582 and Julian before that, so it
-     * has no 5th to 14th of October 1582; this throws for those ten dates. Earlier dates
-     * convert field for field, but be aware that the platform will then do its own arithmetic
-     * on them (day of week, days between) in the Julian calendar.
+     *     opportunity.CloseDate = closeDate.toSystemDate();
+     *
+     * Like `fromSystemDate` this is independent of the running user's locale and time zone.
+     * Dates before 15 October 1582 become the same day on the timeline in the platform's
+     * Julian calendar, so their platform year, month and day can differ from this date's.
      */
     public Date toSystemDate() {
-        if (yearValue == 1582 && monthValue == 10 && dayValue >= 5 && dayValue <= 14) {
-            throw new JiffException(
-                'cannot convert `' +
-                    toString() +
-                    '` to a system Date: the platform calendar skips from 1582-10-04 to 1582-10-15'
-            );
-        }
-        return Date.newInstance(yearValue, monthValue, dayValue);
+        return Datetime.newInstance(toEpochDay() * JiffMath.MILLIS_PER_CIVIL_DAY).dateGmt();
     }
 
     // ---- arithmetic -----------------------------------------------------
@@ -786,6 +789,58 @@ public class JiffDate implements Comparable {
     }
 
     /**
+     * The span from this date until `other`, with the units and rounding `options` ask for.
+     *
+     * The largest unit defaults to the smallest one, and the smallest to `DAY`; both must be
+     * days or bigger. When the smallest unit is bigger than a day, or the increment is not 1,
+     * the difference is rounded as `JiffSpan.round` does, measured from this date.
+     *
+     *     JiffDate d1 = JiffDate.newInstance(2024, 3, 15);
+     *     JiffDate d2 = JiffDate.newInstance(2030, 9, 13);
+     *     d1.until(d2, new JiffDifference().smallest(JiffUnit.YEAR).mode(JiffRoundMode.HALF_EXPAND));
+     *     // P6Y
+     *
+     * Throws when a unit is smaller than a day, the increment is out of range, or the result
+     * does not fit.
+     *
+     * Mirrors `Date::until` with a `DateDifference`.
+     */
+    public JiffSpan until(JiffDate other, JiffDifference options) {
+        return difference(other, options, false);
+    }
+
+    /**
+     * The span from `other` until this date, with the units and rounding `options` ask for.
+     * This is `until(other, options)` before rounding, negated; the rounding is then measured
+     * from this date. See `until(JiffDate, JiffDifference)`.
+     *
+     * Mirrors `Date::since` with a `DateDifference`.
+     */
+    public JiffSpan since(JiffDate other, JiffDifference options) {
+        return difference(other, options, true);
+    }
+
+    private JiffSpan difference(JiffDate other, JiffDifference options, Boolean negate) {
+        JiffDifference config = options == null ? new JiffDifference() : options;
+        JiffUnit smallest = config.getSmallest() == null ? JiffUnit.DAY : config.getSmallest();
+        if (!JiffMath.isCalendar(smallest)) {
+            throw new JiffException(
+                '\'' +
+                    JiffMath.singular(smallest) +
+                    '\' not allowed as a date unit for rounding span'
+            );
+        }
+        JiffSpan span = until(other, config.getLargest() == null ? smallest : config.getLargest());
+        return JiffSpanRelative.roundDifference(
+            negate ? span.negate() : span,
+            config,
+            smallest,
+            JiffSpanRelativeTo.fromDate(this),
+            true
+        );
+    }
+
+    /**
      * The exact length of time from this date until `other`, counting every day as 24 hours.
      * It is negative when `other` is earlier. This never fails.
      *
@@ -864,6 +919,40 @@ public class JiffDate implements Comparable {
     /** A hash consistent with `equals`, so dates can be map keys and set members. */
     public Integer hashCode() {
         return (yearValue * 13 + monthValue) * 32 + dayValue;
+    }
+
+    // ---- strftime / strptime ------------------------------------------------
+
+    /**
+     * Parses a civil date from `input` according to the `strptime` format `format`. The
+     * conversion specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffDate.strptime('%m/%d/%y', '7/14/24');   // 2024-07-14
+     *
+     * Throws `JiffException` when the format is invalid, when the input does not match it, or
+     * when the input has no year, or nothing that finds the day in the year.
+     *
+     * Mirrors `jiff::civil::Date::strptime`.
+     */
+    public static JiffDate strptime(String format, String input) {
+        return JiffStrtime.parse(format, input).toDate();
+    }
+
+    /**
+     * Formats this date according to the `strftime` format `format`. The conversion
+     * specifiers are listed in `JiffStrtime`.
+     *
+     *     JiffDate.newInstance(2024, 7, 15).strftime('%Y-%m-%d is a %A');
+     *     // 2024-07-15 is a Monday
+     *
+     * This never throws for a non-null format. A specifier that cannot be applied, such as
+     * `%H` or `%z`, or an unknown one, is written out literally. To have such mistakes
+     * reported instead, use `JiffStrtime.format`.
+     *
+     * Mirrors `jiff::civil::Date::strftime`.
+     */
+    public String strftime(String format) {
+        return JiffStrtime.formatLenient(format, JiffBrokenDownTime.fromDate(this));
     }
 
     /** Formats this date as ISO 8601, for example `2024-02-29`. */
