@@ -39,6 +39,47 @@ elapsed.round(JiffRound.to(JiffUnit.MINUTE).increment(15));        // PT1H30M
 new JiffSpan().years(1).months(2).days(3).hours(4).toString();     // P1Y2M3DT4H
 ```
 
+## Working with records
+
+`JiffRecords` reads and writes the date, time and datetime fields of records, by field token or
+by name:
+
+```apex
+Opportunity opp = [SELECT CloseDate FROM Opportunity WHERE Id = :oppId];
+JiffDate closeDate = JiffRecords.getDate(opp, Opportunity.CloseDate);              // 2024-01-31
+JiffRecords.putDate(opp, Opportunity.CloseDate, closeDate.add(new JiffSpan().months(1)));
+                                                                                   // 2024-02-29
+
+Event meeting = [SELECT ActivityDateTime FROM Event WHERE Id = :eventId];
+JiffTimeZone newYork = JiffTimeZone.get('America/New_York');
+JiffZonedDateTime starts = JiffRecords.getZonedDateTime(meeting, Event.ActivityDateTime, newYork);
+                                                // 2024-07-04T07:39:00-04:00[America/New_York]
+
+// Store "02:30 on 10 March in New York", a time that daylight saving skips.
+JiffRecords.putDateTime(meeting, Event.ActivityDateTime,
+    JiffDateTime.newInstance(2024, 3, 10, 2, 30, 0, 0), newYork);   // stored as 07:30 UTC
+```
+
+| Field type | Read as | Methods |
+| --- | --- | --- |
+| Date | `JiffDate` | `getDate`, `putDate` |
+| Time | `JiffTime` | `getTime`, `putTime` |
+| Datetime | `JiffTimestamp` (the instant) | `getTimestamp`, `putTimestamp` |
+| Datetime | `JiffZonedDateTime` (the instant in a zone, by default the user's) | `getZonedDateTime`, `putZonedDateTime` |
+| Datetime | `JiffDateTime` (the wall clock reading in a zone you name) | `getDateTime`, `putDateTime` |
+
+- An empty field reads as null, and writing null empties it.
+- Writing drops anything finer than a millisecond, the precision of the platform types.
+- The field's type is checked, so putting a datetime into a Date field throws instead of being
+  silently converted.
+- Conversions do not depend on the user's locale. This matters for `th_TH` users, for whom the
+  platform reports a 2024 date as year 2567.
+
+The same conversions exist on the types themselves for values that are not in a record:
+`JiffDate.fromSystemDate` / `toSystemDate`, `JiffTime.fromSystemTime` / `toSystemTime`,
+`JiffTimestamp.fromSystemDatetime` / `toSystemDatetime`, and
+`JiffZonedDateTime.fromSystemDatetime` / `toSystemDatetime`.
+
 ## Status
 
 This is a port in progress, tracking Jiff 1.0.0. It has not yet been compiled on a Salesforce org.
@@ -55,11 +96,10 @@ This is a port in progress, tracking Jiff 1.0.0. It has not yet been compiled on
 | Friendly duration format (`2h 30m`, `1 year, 2 months ago`) | Done |
 | ISO 8601 / RFC 9557 parsing for dates, times, datetimes and timestamps | Done |
 | `JiffZonedDateTime` | Done, not yet independently verified |
-| Converting platform `Date`, `Time`, `Datetime` values to and from Jiff types | Done, with a known locale issue |
+| Converting platform `Date`, `Time`, `Datetime` values, and record fields (`JiffRecords`) | Done |
 | Span arithmetic, comparison, totals and rounding relative to a date | Not started |
 | `until`/`since` with rounding options, `JiffZonedDateTime.parse` | Not started |
 | `strftime`/`strptime`, RFC 2822 | Not started |
-| A record helper for reading and writing SObject fields | Not started |
 
 Work is paused. [docs/HANDOFF.md](docs/HANDOFF.md) has the detailed state and the remaining plan.
 

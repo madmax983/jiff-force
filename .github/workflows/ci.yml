@@ -56,24 +56,41 @@ jobs:
       AER_LICENSE_KEY: ${{ secrets.AER_LICENSE_KEY }}
     steps:
       - uses: actions/checkout@v4
-      # AER's free tier stops after 100 test methods. The suite is larger than
-      # that, so the full run needs a licence key; without one this job is a
-      # no-op rather than a failure.
+      # AER's free tier stops after 100 test methods. The whole suite is larger
+      # than that and needs a licence key. Without one, only the classes the JVM
+      # harness cannot run (tools/apexjvm/aer-only.txt) are tested here, in a
+      # single run well inside the free tier.
       - name: Check for an AER licence key
         id: licence
         run: |
           if [ -n "${AER_LICENSE_KEY}" ]; then
             echo "present=true" >> "${GITHUB_OUTPUT}"
           else
-            echo "::notice::AER_LICENSE_KEY is not configured; skipping the AER test run."
+            echo "::notice::AER_LICENSE_KEY is not configured; running only the AER-only test classes."
           fi
-      - name: Run Apex tests with AER
+      - name: Run all Apex tests with AER
         if: steps.licence.outputs.present == 'true'
         uses: octoberswimmer/aer-dist@v1.7.3
         with:
           source: force-app
           version: v1.7.3
           flags: --timezone America/Los_Angeles
+      - name: Run the AER-only Apex tests
+        if: steps.licence.outputs.present != 'true'
+        uses: octoberswimmer/aer-dist@v1.7.3
+        with:
+          source: force-app
+          version: v1.7.3
+          flags: --timezone America/Los_Angeles -f JiffRecordsTest
+      # Record conversions must not depend on the user's locale, including the
+      # Buddhist calendar locale, whose dates report different years.
+      - name: Run the record tests under a Buddhist calendar locale
+        if: steps.licence.outputs.present != 'true'
+        uses: octoberswimmer/aer-dist@v1.7.3
+        with:
+          source: force-app
+          version: v1.7.3
+          flags: --timezone Asia/Bangkok --locale th_TH -f JiffRecordsTest
 
   org:
     name: Validate against a Salesforce org

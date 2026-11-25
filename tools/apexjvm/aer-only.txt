@@ -1,0 +1,6 @@
+# Classes the JVM harness does not translate, because they use platform features its shims do
+# not model (SObjects, Schema describe). Their tests run on AER and on a real org only:
+#   npm run test:aer -- -f JiffRecordsTest
+# Keep this list short: everything here loses the harness's strictness and coverage gate.
+JiffRecords
+JiffRecordsTest
