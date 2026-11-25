@@ -82,9 +82,8 @@ The same conversions exist on the types themselves for values that are not in a 
 
 ## Status
 
-Every area of Jiff 1.0.0 that makes sense on the platform is ported. The code has not yet been
-compiled on a Salesforce org; see [docs/HANDOFF.md](docs/HANDOFF.md) for what that and the other
-open items involve.
+Every area of Jiff 1.0.0 that makes sense on the platform is ported. Open items for contributors
+are in [docs/HANDOFF.md](docs/HANDOFF.md).
 
 | Area | State |
 | --- | --- |
