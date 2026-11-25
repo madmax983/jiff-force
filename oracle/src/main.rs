@@ -24,6 +24,7 @@ mod replay;
 mod rng;
 mod span;
 mod span_relative;
+mod strtime;
 mod text;
 mod time;
 mod timestamp;
@@ -188,6 +189,22 @@ const TOPICS: &[Topic] = &[
         "DifferenceRound",
         span_relative::DIFFERENCE_COLUMNS,
         span_relative::difference_rows,
+    ),
+    (
+        "StrtimeFormat",
+        strtime::FORMAT_COLUMNS,
+        strtime::format_rows,
+    ),
+    ("StrtimeParse", strtime::PARSE_COLUMNS, strtime::parse_rows),
+    (
+        "Rfc2822Parse",
+        strtime::RFC2822_PARSE_COLUMNS,
+        strtime::rfc2822_parse_rows,
+    ),
+    (
+        "Rfc2822Print",
+        strtime::RFC2822_PRINT_COLUMNS,
+        strtime::rfc2822_print_rows,
     ),
 ];
 
